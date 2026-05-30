@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Local tooling / editor
+.claude/
+.vscode/
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Runtime / app config (written to userData, but ignore if it ever lands here)
+pet-config.json

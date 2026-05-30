@@ -8,20 +8,81 @@ const bubbleText = document.getElementById('bubble-text');
 const MOODS = ['idle', 'thinking', 'working', 'happy', 'sleeping', 'error'];
 
 let currentMood = 'idle';
+let currentSource = '';
 let lastInteraction = Date.now();
 let ttlTimer = null;
 let bubbleTimer = null;
 let happyResetTimer = null;
 let aiActive = false; // an AI is driving the pet right now
+let muted = false;
+
+// Known AI sources get their own tint; anything else falls back to default.
+const KNOWN_SOURCES = ['claude', 'chatgpt', 'gemini', 'deepseek'];
+
+// ---------------------------------------------------------------------------
+// Settings from main (mute toggle)
+// ---------------------------------------------------------------------------
+window.pet.onSettings((s) => {
+  if (typeof s.muted === 'boolean') muted = s.muted;
+});
+
+// ---------------------------------------------------------------------------
+// Tiny WebAudio chimes — no asset files needed. Skipped while muted.
+// ---------------------------------------------------------------------------
+let audioCtx = null;
+function tone(freq, when, dur, gain = 0.06) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+  g.gain.setValueAtTime(0, when);
+  g.gain.linearRampToValueAtTime(gain, when + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+  osc.connect(g).connect(audioCtx.destination);
+  osc.start(when);
+  osc.stop(when + dur);
+}
+function playSound(name) {
+  if (muted) return;
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const t = audioCtx.currentTime;
+    if (name === 'happy') {
+      tone(523.25, t, 0.14);        // C5
+      tone(783.99, t + 0.1, 0.18);  // G5 — little rising "ta-da"
+    } else if (name === 'error') {
+      tone(196, t, 0.22, 0.07);     // low G3 buzz
+      tone(155.56, t + 0.12, 0.22, 0.07);
+    }
+  } catch {
+    /* audio not available — ignore */
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Mood control
 // ---------------------------------------------------------------------------
-function setMood(mood) {
+function applyClasses() {
+  pet.className = 'mood-' + currentMood;
+  if (currentSource && KNOWN_SOURCES.includes(currentSource)) {
+    pet.classList.add('source-' + currentSource);
+  }
+}
+
+function setMood(mood, { silent = false } = {}) {
   if (!MOODS.includes(mood)) mood = 'idle';
+  const changed = mood !== currentMood;
   currentMood = mood;
-  pet.className = '';
-  pet.classList.add('mood-' + mood);
+  applyClasses();
+  if (changed && !silent && (mood === 'happy' || mood === 'error')) {
+    playSound(mood);
+  }
+}
+
+function setSource(source) {
+  currentSource = (source || '').toLowerCase();
+  applyClasses();
 }
 
 function say(text, ms = 4000) {
@@ -51,6 +112,7 @@ window.pet.onAiState((state) => {
   const goingIdle = state.mood === 'idle';
   aiActive = !goingIdle;
 
+  setSource(goingIdle ? '' : state.source);
   setMood(state.mood);
 
   if (state.text) {
@@ -84,7 +146,8 @@ const POKE_LINES = [
 
 function react() {
   lastInteraction = Date.now();
-  setMood('happy');
+  setSource('');
+  setMood('happy', { silent: true }); // poking shouldn't spam the chime
   say(POKE_LINES[(Math.random() * POKE_LINES.length) | 0], 1800);
   clearTimeout(happyResetTimer);
   happyResetTimer = setTimeout(() => {

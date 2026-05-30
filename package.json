@@ -5,11 +5,39 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "notify": "node hooks/pet-notify.js"
+    "notify": "node hooks/pet-notify.js",
+    "test": "node pettest.js",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux"
   },
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^33.2.0"
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.desktoppet.app",
+    "productName": "Desktop Pet",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "target": ["dmg"],
+      "category": "public.app-category.entertainment",
+      "extendInfo": {
+        "LSUIElement": 1
+      }
+    },
+    "win": {
+      "target": ["nsis"]
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Utility"
+    }
   }
 }

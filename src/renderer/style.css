@@ -221,6 +221,14 @@ body {
 .mood-sleeping .eye { height: 3px; margin-top: 8px; }
 .mood-sleeping .zzz { animation: float-z 2.4s ease-in-out infinite; }
 
+/* ============ PER-SOURCE TINT ============ */
+/* A subtle glow ring keyed off the AI that's driving the pet. Layered on top
+   of the mood background so it reads regardless of mood color. */
+.source-claude   .body { box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.65), 0 0 14px rgba(217, 119, 87, 0.5); }
+.source-chatgpt  .body { box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.65), 0 0 14px rgba(16, 163, 127, 0.5); }
+.source-gemini   .body { box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.65), 0 0 14px rgba(66, 133, 244, 0.5); }
+.source-deepseek .body { box-shadow: 0 0 0 3px rgba(125, 95, 255, 0.65), 0 0 14px rgba(125, 95, 255, 0.5); }
+
 /* ============ KEYFRAMES ============ */
 @keyframes breathe {
   0%, 100% { transform: translateX(-50%) scaleY(1) scaleX(1); }

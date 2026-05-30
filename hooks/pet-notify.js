@@ -14,12 +14,14 @@
  * Env:
  *   PET_PORT   (default 7337)
  *   PET_SOURCE (default "claude")
+ *   PET_TOKEN  (optional; must match the app's PET_TOKEN if it set one)
  */
 
 const http = require('http');
 
 const PORT = Number(process.env.PET_PORT) || 7337;
 const SOURCE = process.env.PET_SOURCE || 'claude';
+const TOKEN = process.env.PET_TOKEN || '';
 
 // Map Claude Code hook events -> pet moods.
 const EVENT_MOOD = {
@@ -35,18 +37,14 @@ const EVENT_MOOD = {
 
 function send(state) {
   const body = JSON.stringify({ source: SOURCE, ...state });
+  const headers = {
+    'Content-Type': 'application/json',
+    'Content-Length': Buffer.byteLength(body)
+  };
+  if (TOKEN) headers['X-Pet-Token'] = TOKEN;
+
   const req = http.request(
-    {
-      host: '127.0.0.1',
-      port: PORT,
-      path: '/state',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body)
-      },
-      timeout: 1500
-    },
+    { host: '127.0.0.1', port: PORT, path: '/state', method: 'POST', headers, timeout: 1500 },
     (res) => res.resume()
   );
   // Never block or crash the AI host if the pet isn't running.
@@ -60,22 +58,21 @@ const [, , moodArg, ...rest] = process.argv;
 
 if (moodArg) {
   send({ mood: moodArg, text: rest.join(' ') });
-  return;
+} else {
+  // No args: read Claude Code hook JSON from stdin and map the event.
+  let input = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (c) => (input += c));
+  process.stdin.on('end', () => {
+    let evt = '';
+    try {
+      evt = JSON.parse(input || '{}').hook_event_name || '';
+    } catch {
+      /* ignore malformed hook payloads */
+    }
+    const state = EVENT_MOOD[evt];
+    if (state) send(state);
+  });
+  // If nothing arrives on stdin quickly, just exit.
+  setTimeout(() => process.exit(0), 1000);
 }
-
-// No args: try reading hook JSON from stdin.
-let input = '';
-process.stdin.setEncoding('utf8');
-process.stdin.on('data', (c) => (input += c));
-process.stdin.on('end', () => {
-  let evt = '';
-  try {
-    evt = (JSON.parse(input || '{}').hook_event_name) || '';
-  } catch {
-    /* ignore */
-  }
-  const state = EVENT_MOOD[evt] || { mood: 'idle', text: '' };
-  send(state);
-});
-// If nothing arrives on stdin quickly, just exit.
-setTimeout(() => process.exit(0), 1000);

@@ -12,5 +12,6 @@ contextBridge.exposeInMainWorld('pet', {
 
   // Events from main
   onClick: (cb) => ipcRenderer.on('pet-click', () => cb()),
-  onAiState: (cb) => ipcRenderer.on('ai-state', (_e, state) => cb(state))
+  onAiState: (cb) => ipcRenderer.on('ai-state', (_e, state) => cb(state)),
+  onSettings: (cb) => ipcRenderer.on('settings', (_e, settings) => cb(settings))
 });

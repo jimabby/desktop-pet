@@ -1,11 +1,17 @@
 {
-  "_comment": "Merge the `hooks` block into your Claude Code settings.json (~/.claude/settings.json or .claude/settings.json). Replace ABSOLUTE_PATH with the full path to this repo's hooks/pet-notify.js. The script reads the hook event from stdin and tells the pet how to react. It fails silently if the pet app isn't running.",
+  "_comment": "Merge the `hooks` block into your Claude Code settings.json (~/.claude/settings.json or .claude/settings.json). Replace ABSOLUTE_PATH with the full path to this repo. The script reads the hook event from stdin and tells the pet how to react. It fails silently if the pet app isn't running. If you launched the pet with PET_TOKEN set, also export the same PET_TOKEN in the environment Claude Code runs in.",
 
   "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "node ABSOLUTE_PATH/hooks/pet-notify.js" }] }
+    ],
     "UserPromptSubmit": [
       { "hooks": [{ "type": "command", "command": "node ABSOLUTE_PATH/hooks/pet-notify.js" }] }
     ],
     "PreToolUse": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "node ABSOLUTE_PATH/hooks/pet-notify.js" }] }
+    ],
+    "PostToolUse": [
       { "matcher": "*", "hooks": [{ "type": "command", "command": "node ABSOLUTE_PATH/hooks/pet-notify.js" }] }
     ],
     "Notification": [
@@ -14,7 +20,10 @@
     "Stop": [
       { "hooks": [{ "type": "command", "command": "node ABSOLUTE_PATH/hooks/pet-notify.js" }] }
     ],
-    "SessionStart": [
+    "SubagentStop": [
+      { "hooks": [{ "type": "command", "command": "node ABSOLUTE_PATH/hooks/pet-notify.js" }] }
+    ],
+    "SessionEnd": [
       { "hooks": [{ "type": "command", "command": "node ABSOLUTE_PATH/hooks/pet-notify.js" }] }
     ]
   }

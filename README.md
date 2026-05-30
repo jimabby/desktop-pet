@@ -11,11 +11,15 @@ when an AI assistant (Claude, ChatGPT, Gemini, DeepSeek, …) is working**.
 
 - Transparent, frameless, always-on-top window
 - **Click-through** on empty areas — it won't block the app behind it
-- **Drag** to reposition anywhere
+- **Drag** to reposition anywhere — **position is remembered** across restarts
 - **Click/poke** reactions
 - **Speech bubbles**
 - **Idle behaviors**: blinking, little hops, falls asleep when ignored
+- **Per-AI tint** — a colored glow shows which assistant is driving it
+- **Sound chimes** on done/error (toggle from the tray)
+- **Tray menu**: show/hide, mute sounds, launch at login, reset position, quit
 - **AI integration** via a tiny local control server + Claude Code hooks
+- **Optional token auth** so random web pages can't puppet your pet
 
 ## Run it
 
@@ -27,7 +31,9 @@ npm install
 npm start
 ```
 
-The pet appears bottom-right. Quit / reset position from the **tray icon**.
+The pet appears bottom-right (or wherever you last left it). Everything else —
+show/hide, mute sounds, launch at login, reset position, quit — lives in the
+**tray icon** (the menu bar on macOS; there's no dock icon by design).
 
 ## How AI reactions work
 
@@ -49,6 +55,26 @@ curl -s localhost:7337/state \
 
 `GET /health` returns `{ ok: true }` so scripts can check the pet is up.
 
+The `source` is also used to tint the pet (`claude`, `chatgpt`, `gemini`,
+`deepseek` each get their own glow color); `happy` and `error` moods play a
+short chime unless you've muted sounds from the tray.
+
+### Locking it down (optional token)
+
+The control server only listens on `127.0.0.1`, but CORS is open so any web page
+you visit could POST to it. To require a shared secret, launch the pet with a
+`PET_TOKEN` set and send the same token as an `X-Pet-Token` header:
+
+```bash
+PET_TOKEN=hunter2 npm start
+# then:
+curl -s localhost:7337/state -H 'X-Pet-Token: hunter2' \
+  -H 'Content-Type: application/json' -d '{"mood":"happy"}'
+```
+
+`hooks/pet-notify.js` reads `PET_TOKEN` from its environment automatically, so
+export the same value wherever your hooks run. `/health` stays public.
+
 ### Claude Code (automatic)
 
 1. Open [hooks/claude-settings-example.json](hooks/claude-settings-example.json).
@@ -56,7 +82,9 @@ curl -s localhost:7337/state \
 3. Merge the `hooks` block into your `~/.claude/settings.json`.
 
 Now the pet thinks when you submit a prompt, works while tools run, and cheers
-when Claude finishes. The hook script fails silently if the pet isn't running.
+when Claude finishes (and quiets down on session end). The hook script fails
+silently if the pet isn't running. If you set a `PET_TOKEN`, export it in the
+environment Claude Code runs in too.
 
 ### ChatGPT / Gemini / DeepSeek / anything else
 
@@ -77,16 +105,18 @@ wherever you can:
 
 ```
 src/
-  main.js            Electron main: window, tray, drag, starts the server
+  main.js            Electron main: window, tray, drag, position, starts the server
   preload.js         Safe IPC bridge to the renderer
-  server.js          Local control server (the AI -> pet endpoint)
+  server.js          Local control server (the AI -> pet endpoint, optional token)
+  store.js           Tiny JSON config store (position + settings) in userData
   renderer/
     index.html       Pet markup
-    style.css        Pet art + mood animations (placeholder CSS slime)
-    pet.js           Behavior: moods, bubbles, idle loop, click/drag
+    style.css        Pet art + mood animations + per-source tint (placeholder CSS slime)
+    pet.js           Behavior: moods, bubbles, idle loop, click/drag, sounds
 hooks/
   pet-notify.js      Sends a mood to the pet (CLI args or hook JSON on stdin)
   claude-settings-example.json
+pettest.js           Smoke test for the server + hook script (npm test)
 ```
 
 ## Swapping in real art later
@@ -98,12 +128,14 @@ behavior code needs to change.
 
 ## Packaging (distributables)
 
-Add [electron-builder](https://www.electron.build/) when you're ready to ship:
+[electron-builder](https://www.electron.build/) is already configured in
+`package.json`. After `npm install`:
 
 ```bash
-npm install --save-dev electron-builder
-# then configure "build" in package.json and run `electron-builder`
+npm run dist          # build for your current OS
+npm run dist:mac      # .dmg
+npm run dist:win      # NSIS .exe installer
+npm run dist:linux    # AppImage
 ```
 
-It produces a `.dmg` (macOS) and `.exe`/NSIS installer (Windows) from the same code.
-```
+Output lands in `dist/`. The same code produces all three.

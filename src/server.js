@@ -17,8 +17,13 @@ const http = require('http');
  *   ttl    - optional ms after which the pet returns to idle
  *
  * GET /health  -> { ok: true }  (handy for scripts to check the pet is up)
+ *
+ * Optional auth: set PET_TOKEN in the environment and the /state endpoint will
+ * require a matching `X-Pet-Token` header. This stops random web pages you visit
+ * from puppeting the pet via the open CORS policy. /health stays public.
  */
 function startControlServer(port, onState) {
+  const TOKEN = process.env.PET_TOKEN || '';
   const VALID_MOODS = new Set([
     'idle',
     'thinking',
@@ -32,7 +37,7 @@ function startControlServer(port, onState) {
     // Permissive CORS so browser-based AI wrappers can call it too.
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Pet-Token');
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
@@ -45,6 +50,11 @@ function startControlServer(port, onState) {
     }
 
     if (req.method === 'POST' && req.url === '/state') {
+      if (TOKEN && req.headers['x-pet-token'] !== TOKEN) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'unauthorized' }));
+      }
+
       let body = '';
       req.on('data', (c) => {
         body += c;
