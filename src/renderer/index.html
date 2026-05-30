@@ -19,20 +19,49 @@
           <div id="ai-badges" class="ai-badges hidden" aria-hidden="true"></div>
           <!-- floating hearts / sparkles spawn here (pointer-events: none) -->
           <div id="particles" class="particles" aria-hidden="true"></div>
-          <!-- little leaf sprout on top — purely decorative -->
+          <!-- little leaf sprout on top, with a flower bud that blooms when happy -->
           <div class="sprout" aria-hidden="true">
             <span class="leaf left"></span>
             <span class="leaf right"></span>
+            <span class="flower">
+              <span class="petal"></span><span class="petal"></span>
+              <span class="petal"></span><span class="petal"></span>
+              <span class="petal"></span>
+              <span class="flower-core"></span>
+            </span>
           </div>
+          <!-- party hat, only shown when the pet is showered with affection -->
+          <div class="hat" aria-hidden="true"><span class="pom"></span></div>
+          <!-- cat ears (only shown for skin-cat) -->
+          <div class="ear left" aria-hidden="true"></div>
+          <div class="ear right" aria-hidden="true"></div>
+          <!-- unlockable cosmetics: revealed by cosmetic-* classes -->
+          <div class="crown" aria-hidden="true"></div>
+          <div class="glasses" aria-hidden="true"><span class="lens left"></span><span class="lens right"></span></div>
+          <div class="scarf" aria-hidden="true"><span class="tail"></span></div>
+          <!-- little stubby feet (behind the body) -->
+          <div class="foot left" aria-hidden="true"></div>
+          <div class="foot right" aria-hidden="true"></div>
           <div class="body">
+            <div class="shine"></div>
             <div class="eye left"><span class="pupil"></span></div>
             <div class="eye right"><span class="pupil"></span></div>
             <div class="mouth"></div>
             <div class="blush left"></div>
             <div class="blush right"></div>
           </div>
+          <!-- little arms that wave while working / being petted -->
+          <div class="arm left" aria-hidden="true"></div>
+          <div class="arm right" aria-hidden="true"></div>
           <div class="zzz">z<span>z</span><span>z</span></div>
         </div>
+      </div>
+
+      <!-- context-usage slider: a thin bar below the pet that fills as the
+           conversation's context window grows -->
+      <div id="ctx-bar" class="ctx-bar hidden" aria-hidden="true">
+        <div class="ctx-bar-track"><div class="ctx-bar-fill"></div></div>
+        <span id="ctx-bar-label" class="ctx-bar-label hidden"></span>
       </div>
     </div>
 

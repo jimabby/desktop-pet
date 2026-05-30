@@ -124,6 +124,13 @@ body {
   0%, 100% { transform: translateY(0); }
   50%      { transform: translateY(-9px); }
 }
+/* A more insistent bounce once a confirm has gone unanswered for a while. */
+#pet.attention.attention-strong { animation: attention-bounce-strong 0.42s ease-in-out infinite; }
+#pet.attention.attention-strong::before { background: #ff2d55; }
+@keyframes attention-bounce-strong {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-17px) scale(1.05); }
+}
 @keyframes attention-pop {
   0%, 100% { transform: scale(1); }
   50%      { transform: scale(1.18); }
@@ -178,6 +185,44 @@ body {
   animation: shadow-breathe 2.8s ease-in-out infinite;
 }
 
+/* ---------- Context-usage slider ---------- */
+/* A thin horizontal bar below the pet that fills as the conversation's context
+   window fills up. --pct (0–100) and --ring-color are set from JS. */
+.ctx-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 96px;
+  margin-top: 6px;
+  --pct: 0;
+  --ring-color: #59c98a;
+  opacity: 0.95;
+  transition: opacity 0.4s ease;
+}
+.ctx-bar.hidden { display: none; }
+.ctx-bar.dim { opacity: 0.4; }
+.ctx-bar-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(120, 130, 150, 0.22);
+  overflow: hidden;
+}
+.ctx-bar-fill {
+  height: 100%;
+  width: calc(var(--pct) * 1%);
+  border-radius: 999px;
+  background: var(--ring-color);
+  transition: width 0.4s ease, background 0.3s ease;
+}
+.ctx-bar-label {
+  font-size: 8.5px;
+  font-weight: 800;
+  color: var(--label-color, #59c98a);
+  white-space: nowrap;
+}
+.ctx-bar-label.hidden { display: none; }
+
 .body {
   position: absolute;
   bottom: 0;
@@ -185,7 +230,7 @@ body {
   width: 100px;
   height: 88px;
   transform: translateX(-50%);
-  background: linear-gradient(160deg, #7ee8a0 0%, #45c97a 100%);
+  background: linear-gradient(160deg, var(--body-1, #7ee8a0) 0%, var(--body-2, #45c97a) 100%);
   border-radius: 50% 50% 46% 46% / 60% 60% 40% 40%;
   box-shadow: inset -8px -10px 0 rgba(0, 0, 0, 0.08),
     inset 8px 8px 0 rgba(255, 255, 255, 0.25);
@@ -215,7 +260,17 @@ body {
   background: #2b2b3a;
   border-radius: 50%;
 }
-.body { animation-name: breathe; }
+/* a tiny catch-light so the eyes look glossy */
+.pupil::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 3px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+}
 
 /* blink driven by JS adding .blink */
 #pet.blink .eye {
@@ -294,6 +349,161 @@ body {
 }
 .mood-happy .sprout { animation: sprout-perk 0.35s ease-in-out 4; }
 .mood-sleeping .sprout { animation: sprout-sway 6s ease-in-out infinite; }
+
+/* A flower bud sitting between the leaves. Closed by default (just the core
+   shows); the petals bloom open when the pet is happy or being petted. */
+.sprout .flower {
+  position: absolute;
+  bottom: 4px;
+  left: -6px;
+  width: 12px;
+  height: 12px;
+}
+.sprout .petal {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  background: radial-gradient(circle at 35% 35%, #ffd1e8 0%, #ff8fc4 100%);
+  border-radius: 50%;
+  /* closed: petals tucked into the center */
+  transform: rotate(var(--a)) translateY(0) scale(0.2);
+  opacity: 0;
+  transition: transform 0.35s ease-out, opacity 0.35s ease-out;
+}
+.sprout .petal:nth-child(1) { --a: 0deg; }
+.sprout .petal:nth-child(2) { --a: 72deg; }
+.sprout .petal:nth-child(3) { --a: 144deg; }
+.sprout .petal:nth-child(4) { --a: 216deg; }
+.sprout .petal:nth-child(5) { --a: 288deg; }
+.sprout .flower-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  background: #ffe27a;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+/* bloom: petals fan out */
+.mood-happy .sprout .petal,
+#pet.act-wiggle .sprout .petal,
+#pet.bloom .sprout .petal {
+  transform: rotate(var(--a)) translateY(-5px) scale(1);
+  opacity: 1;
+}
+
+/* ---------- Stubby arms + feet ---------- */
+.arm {
+  position: absolute;
+  top: 60px;
+  width: 16px;
+  height: 16px;
+  background: linear-gradient(160deg, var(--body-1, #7ee8a0) 0%, var(--body-2, #45c97a) 100%);
+  border-radius: 50%;
+  box-shadow: inset -2px -2px 0 rgba(0, 0, 0, 0.07);
+  z-index: 0;
+  transform-origin: top center;
+}
+.arm.left { left: 0; transform: rotate(18deg); animation: arm-sway-l 3s ease-in-out infinite; }
+.arm.right { right: 0; transform: rotate(-18deg); animation: arm-sway-r 3s ease-in-out infinite; }
+
+.foot {
+  position: absolute;
+  bottom: 0;
+  width: 22px;
+  height: 13px;
+  background: linear-gradient(160deg, var(--body-1, #6fd994) 0%, var(--body-2, #3cb96d) 100%);
+  border-radius: 50% 50% 45% 45%;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.08);
+  z-index: 0;
+}
+.foot.left { left: 24px; }
+.foot.right { right: 24px; }
+
+/* Keep limbs in step with the body's mood color so they read as one creature. */
+.mood-working .arm, .mood-working .foot { background: linear-gradient(160deg, #8fd2ff 0%, #4aa8f0 100%); }
+.mood-happy .arm, .mood-happy .foot { background: linear-gradient(160deg, #ffe27a 0%, #ffc24a 100%); }
+.mood-stressed .arm, .mood-stressed .foot { background: linear-gradient(160deg, #ff8f6b 0%, #e8473c 100%); }
+.mood-error .arm, .mood-error .foot { background: linear-gradient(160deg, #ff9a9a 0%, #f25b5b 100%); }
+
+/* Arms perk up + wave faster while working or being petted. */
+.mood-working .arm.left,
+#pet.act-wiggle .arm.left { animation: arm-wave-l 0.4s ease-in-out infinite; }
+.mood-working .arm.right,
+#pet.act-wiggle .arm.right { animation: arm-wave-r 0.4s ease-in-out infinite; }
+.mood-happy .arm.left { animation: arm-wave-l 0.3s ease-in-out 6; }
+.mood-happy .arm.right { animation: arm-wave-r 0.3s ease-in-out 6; }
+/* tuck the arms in while sleeping */
+.mood-sleeping .arm { animation: none; opacity: 0.85; top: 64px; }
+
+/* ---------- Body shine ---------- */
+/* A soft glossy highlight that drifts across the body, giving it a gel look. */
+.shine {
+  position: absolute;
+  top: 12px;
+  left: 16px;
+  width: 26px;
+  height: 18px;
+  background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 70%);
+  border-radius: 50%;
+  z-index: 2;
+  pointer-events: none;
+  animation: shine-drift 4.5s ease-in-out infinite;
+}
+
+/* ---------- Party hat (affection reward) ---------- */
+/* Hidden by default; JS adds #pet.party for a few seconds after a petting spree. */
+.hat {
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-left: 15px solid transparent;
+  border-right: 15px solid transparent;
+  border-bottom: 30px solid #ff7eb6;
+  transform: translateX(-50%) scale(0);
+  transform-origin: bottom center;
+  opacity: 0;
+  z-index: 4;
+  transition: transform 0.3s cubic-bezier(0.2, 1.6, 0.5, 1), opacity 0.3s;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.2));
+}
+/* candy stripes on the hat */
+.hat::before {
+  content: "";
+  position: absolute;
+  left: -15px;
+  top: 0;
+  width: 30px;
+  height: 30px;
+  background: repeating-linear-gradient(
+    -55deg,
+    transparent 0 5px,
+    rgba(255, 255, 255, 0.6) 5px 9px
+  );
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+.hat .pom {
+  position: absolute;
+  top: -5px;
+  left: -4px;
+  width: 8px;
+  height: 8px;
+  background: #fff3a0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+#pet.party .hat {
+  transform: translateX(-50%) scale(1) rotate(-8deg);
+  opacity: 1;
+  animation: hat-tilt 0.7s ease-in-out infinite;
+}
 
 /* ---------- Particle layer (hearts / sparkles) ---------- */
 .particles {
@@ -545,4 +755,231 @@ body {
 @keyframes badge-bob {
   0%, 100% { transform: translateY(0); }
   50%      { transform: translateY(-4px); }
+}
+@keyframes arm-sway-l {
+  0%, 100% { transform: rotate(18deg); }
+  50%      { transform: rotate(24deg); }
+}
+@keyframes arm-sway-r {
+  0%, 100% { transform: rotate(-18deg); }
+  50%      { transform: rotate(-24deg); }
+}
+@keyframes arm-wave-l {
+  0%, 100% { transform: rotate(10deg); }
+  50%      { transform: rotate(-35deg); }
+}
+@keyframes arm-wave-r {
+  0%, 100% { transform: rotate(-10deg); }
+  50%      { transform: rotate(35deg); }
+}
+@keyframes shine-drift {
+  0%, 100% { transform: translate(0, 0); opacity: 0.7; }
+  50%      { transform: translate(4px, 3px); opacity: 0.45; }
+}
+@keyframes hat-tilt {
+  0%, 100% { transform: translateX(-50%) scale(1) rotate(-8deg); }
+  50%      { transform: translateX(-50%) scale(1.04) rotate(-2deg); }
+}
+
+/* ---------- Being carried (dragged) ---------- */
+/* While you hold + move the pet, it kicks its legs and looks delighted. */
+#pet.grabbed { animation: carried-wobble 0.5s ease-in-out infinite; }
+#pet.grabbed .arm.left { animation: arm-wave-l 0.28s ease-in-out infinite; }
+#pet.grabbed .arm.right { animation: arm-wave-r 0.28s ease-in-out infinite; }
+#pet.grabbed .foot { animation: foot-kick 0.3s ease-in-out infinite; }
+#pet.grabbed .foot.right { animation-delay: 0.15s; }
+#pet.grabbed .shadow { opacity: 0.12; transform: translateX(-50%) scale(0.8); }
+#pet.grabbed .mouth {
+  height: 12px;
+  width: 16px;
+  border-width: 3px;
+}
+@keyframes carried-wobble {
+  0%, 100% { transform: rotate(-4deg); }
+  50%      { transform: rotate(4deg); }
+}
+@keyframes foot-kick {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  50%      { transform: translateY(-3px) rotate(-12deg); }
+}
+
+/* ============ SKINS ============ */
+/* Default is "slime" — the base body styling above. Cat and ghost reshape the
+   silhouette and toggle extra parts via classes on #pet. */
+
+/* Cat: triangular ears + a slightly pointier body. */
+.ear {
+  display: none;
+  position: absolute;
+  top: 4px;
+  width: 0;
+  height: 0;
+  border-left: 13px solid transparent;
+  border-right: 13px solid transparent;
+  border-bottom: 22px solid var(--body-2, #45c97a);
+  z-index: 0;
+  filter: drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.05));
+}
+.skin-cat .ear { display: block; }
+.ear.left { left: 14px; transform: rotate(-20deg); }
+.ear.right { right: 14px; transform: rotate(20deg); }
+.ear::after {
+  content: "";
+  position: absolute;
+  left: -6px;
+  bottom: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 11px solid rgba(255, 178, 200, 0.9);
+}
+.skin-cat .body { border-radius: 48% 48% 46% 46% / 56% 56% 44% 44%; }
+/* cat keeps the sprout hidden so the ears read cleanly */
+.skin-cat .sprout { display: none; }
+
+/* Ghost: taller rounded top, translucent body, scalloped hem, no feet. */
+.skin-ghost .body {
+  border-radius: 50% 50% 14% 14% / 64% 64% 20% 20%;
+  opacity: 0.93;
+}
+.skin-ghost .foot { display: none; }
+.skin-ghost .sprout { display: none; }
+.skin-ghost .body::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -5px;
+  height: 11px;
+  background:
+    radial-gradient(circle at 50% 0, var(--body-2, #45c97a) 5.5px, transparent 6px) repeat-x;
+  background-size: 20px 11px;
+  z-index: -1;
+}
+
+/* ============ UNLOCKABLE COSMETICS ============ */
+/* Each is hidden until #pet carries the matching cosmetic-* class. */
+.crown, .glasses, .scarf { display: none; }
+.cosmetic-crown .crown { display: block; }
+.cosmetic-glasses .glasses { display: block; }
+.cosmetic-scarf .scarf { display: block; }
+
+/* Crown — a little gold zig-zag band on top. */
+.crown {
+  position: absolute;
+  top: -2px;
+  left: 50%;
+  width: 34px;
+  height: 16px;
+  transform: translateX(-50%);
+  background: linear-gradient(160deg, #ffe27a, #ffb02e);
+  clip-path: polygon(0 100%, 0 35%, 20% 70%, 50% 0, 80% 70%, 100% 35%, 100% 100%);
+  z-index: 4;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.2));
+}
+.crown::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  transform: translateX(-50%);
+  background: #ff5a7a;
+  border-radius: 50%;
+}
+
+/* Glasses — two round lenses over the eyes, joined by a bridge. */
+.glasses {
+  position: absolute;
+  top: 36px;
+  left: 50%;
+  width: 64px;
+  height: 18px;
+  transform: translateX(-50%);
+  z-index: 3;
+}
+.glasses .lens {
+  position: absolute;
+  top: 0;
+  width: 20px;
+  height: 18px;
+  border: 2.5px solid #33384a;
+  border-radius: 50%;
+  background: rgba(180, 220, 255, 0.28);
+}
+.glasses .lens.left { left: 2px; }
+.glasses .lens.right { right: 2px; }
+.glasses::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  width: 14px;
+  height: 3px;
+  transform: translateX(-50%);
+  background: #33384a;
+  border-radius: 2px;
+}
+
+/* Scarf — a knitted band low on the body with a hanging tail. */
+.scarf {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  width: 88px;
+  height: 14px;
+  transform: translateX(-50%);
+  background: repeating-linear-gradient(90deg, #e8473c 0 7px, #c4392f 7px 14px);
+  border-radius: 7px;
+  z-index: 3;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.12);
+}
+.scarf .tail {
+  position: absolute;
+  bottom: -16px;
+  left: 12px;
+  width: 12px;
+  height: 20px;
+  background: repeating-linear-gradient(90deg, #e8473c 0 6px, #c4392f 6px 12px);
+  border-radius: 0 0 4px 4px;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.12);
+  animation: scarf-flutter 2.6s ease-in-out infinite;
+  transform-origin: top center;
+}
+@keyframes scarf-flutter {
+  0%, 100% { transform: rotate(-5deg); }
+  50%      { transform: rotate(7deg); }
+}
+
+/* ============ MORE AI SOURCES ============ */
+.ai-badge.source-copilot { background: #6e40c9; }
+.ai-badge.source-cursor  { background: #3b3b4f; }
+.ai-badge.source-ollama  { background: #b65f1f; }
+.source-copilot .body { box-shadow: 0 0 0 3px rgba(110, 64, 201, 0.65), 0 0 14px rgba(110, 64, 201, 0.5); }
+.source-cursor  .body { box-shadow: 0 0 0 3px rgba(59, 59, 79, 0.7), 0 0 14px rgba(59, 59, 79, 0.5); }
+.source-ollama  .body { box-shadow: 0 0 0 3px rgba(182, 95, 31, 0.65), 0 0 14px rgba(182, 95, 31, 0.5); }
+
+/* ============ FOCUS MODE ============ */
+/* A steady violet concentration glow during a focus work block. */
+.focusing .body { box-shadow: 0 0 0 3px rgba(143, 111, 255, 0.5), 0 0 16px rgba(143, 111, 255, 0.45); }
+
+/* ============ KONAMI RAINBOW ============ */
+#pet.rainbow .body { animation: rainbow-cycle 1.4s linear infinite; }
+@keyframes rainbow-cycle {
+  from { filter: hue-rotate(0deg) saturate(1.5); }
+  to   { filter: hue-rotate(360deg) saturate(1.5); }
+}
+
+/* ---------- Respect reduced-motion ---------- */
+/* Users who ask the OS to minimize motion get a calm pet: no looping bounces,
+   sways, or drifts. One-shot reactions (pop, blink) are left intact. */
+@media (prefers-reduced-motion: reduce) {
+  .body, .shadow, .sprout, .arm, .shine, .mood-working,
+  .mood-working .body, .mood-thinking, .mood-thinking .body,
+  .mood-thinking .pupil, .source-many.mood-thinking,
+  .source-many.mood-working, .ai-badge, #pet.attention,
+  #pet.attention::before, .mood-stressed, .mood-stressed .body,
+  .scarf .tail, #pet.rainbow .body {
+    animation: none !important;
+  }
 }

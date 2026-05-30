@@ -21,17 +21,45 @@
 
 const http = require('http');
 const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 const PORT = Number(process.env.PET_PORT) || 7337;
 const SOURCE = process.env.PET_SOURCE || 'claude';
-const TOKEN = process.env.PET_TOKEN || '';
+
+// The pet app saves its settings (token, stress threshold, …) to a JSON file in
+// its userData dir. We read it as a fallback so values set in the GUI reach the
+// hook too. Env vars still win, and any failure is silently ignored.
+function readPetConfig() {
+  const home = os.homedir();
+  let base;
+  if (process.platform === 'darwin') base = path.join(home, 'Library', 'Application Support');
+  else if (process.platform === 'win32') base = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+  else base = process.env.XDG_CONFIG_HOME || path.join(home, '.config');
+  // App name is "desktop-pet" in dev, "Desktop Pet" once packaged.
+  for (const dir of ['desktop-pet', 'Desktop Pet']) {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(base, dir, 'pet-config.json'), 'utf8'));
+    } catch {
+      /* try the next candidate */
+    }
+  }
+  return {};
+}
+
+const PET_CONFIG = readPetConfig();
+
+const TOKEN = process.env.PET_TOKEN || PET_CONFIG.token || '';
 
 // When the conversation's context grows past this many tokens, the pet shows a
 // strained "stressed" look instead of its normal active/done mood. Tunable via
-// PET_STRESS_TOKENS (set 0 to disable).
-const STRESS_TOKENS = process.env.PET_STRESS_TOKENS != null
-  ? Number(process.env.PET_STRESS_TOKENS)
-  : 120000;
+// PET_STRESS_TOKENS (env) or the app's Settings window; set 0 to disable.
+const STRESS_TOKENS =
+  process.env.PET_STRESS_TOKENS != null
+    ? Number(process.env.PET_STRESS_TOKENS)
+    : Number.isFinite(PET_CONFIG.stressTokens)
+      ? PET_CONFIG.stressTokens
+      : 120000;
 
 // Safety-net TTL for "active" states. Interrupting Claude fires no hook, so a
 // lingering working/thinking state would otherwise stick forever. Each new tool
@@ -43,6 +71,9 @@ const EVENT_MOOD = {
   UserPromptSubmit: { mood: 'thinking', text: 'on it...', ttl: ACTIVE_TTL },
   PreToolUse: { mood: 'working', text: 'working...', ttl: ACTIVE_TTL },
   PostToolUse: { mood: 'working', text: '', ttl: ACTIVE_TTL },
+  // Permission dialog ("can I run this tool?") — Claude Code fires this distinct
+  // event for confirm prompts; Notification is only idle/other notices.
+  PermissionRequest: { mood: 'thinking', text: 'can I run this? 👀', ttl: 120000 },
   Notification: { mood: 'thinking', text: 'needs you 👀', ttl: 60000 },
   Stop: { mood: 'happy', text: 'done!', ttl: 4000 },
   SubagentStop: { mood: 'happy', text: 'subtask done!', ttl: 4000 },
@@ -200,14 +231,23 @@ if (moodArg) {
     const state = EVENT_MOOD[payload.hook_event_name];
     if (!state) return;
 
-    // A Notification means Claude needs the user (permission / confirm / idle
-    // prompt). Carry the real message + a link back to the editor so the user
-    // can click the pet to jump straight to the prompt.
-    if (payload.hook_event_name === 'Notification') {
+    // PermissionRequest (a confirm/permission dialog) and Notification (idle /
+    // other notices) both mean Claude needs the user. Carry the real message +
+    // a link back to the editor so the user can click the pet to jump straight
+    // to the prompt.
+    if (
+      payload.hook_event_name === 'PermissionRequest' ||
+      payload.hook_event_name === 'Notification'
+    ) {
       const link = buildOpenLink(payload.cwd);
+      // Prefer Claude's own message; for a bare permission request, name the
+      // tool it wants to run (e.g. "allow Bash?").
+      let text = payload.message ? String(payload.message) : '';
+      if (!text && payload.tool_name) text = `allow ${payload.tool_name}?`;
+      if (!text) text = state.text;
       return send({
         mood: 'thinking',
-        text: payload.message ? String(payload.message).slice(0, 160) : state.text,
+        text: String(text).slice(0, 160),
         ttl: state.ttl,
         link,
         linkText: link ? 'Open editor →' : '',
@@ -225,16 +265,17 @@ if (moodArg) {
       text = pickGerund();
     }
 
+    // How full is the context window? Sent along so the pet can draw a usage
+    // ring, and used here to flip into the strained look when it's getting big.
+    const ctx = contextTokens(payload.transcript_path);
+
     // Heavy context -> show the strained look instead of the normal mood, but
     // keep the event's TTL so it still self-heals after an interrupt.
     const overridable = state.mood === 'working' || state.mood === 'thinking' || state.mood === 'happy';
-    if (STRESS_TOKENS > 0 && overridable) {
-      const ctx = contextTokens(payload.transcript_path);
-      if (ctx >= STRESS_TOKENS) {
-        return send({ mood: 'stressed', text: `phew… ${Math.round(ctx / 1000)}k ctx`, ttl: state.ttl });
-      }
+    if (STRESS_TOKENS > 0 && overridable && ctx >= STRESS_TOKENS) {
+      return send({ mood: 'stressed', text: `phew… ${Math.round(ctx / 1000)}k ctx`, ttl: state.ttl, ctx });
     }
-    send({ mood: state.mood, text, ttl: state.ttl });
+    send({ mood: state.mood, text, ttl: state.ttl, ctx });
   });
   // If nothing arrives on stdin quickly, just exit.
   setTimeout(() => process.exit(0), 1000);

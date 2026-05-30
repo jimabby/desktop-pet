@@ -15,7 +15,21 @@ function createStore(app) {
     scale: 1,
     muted: false,
     launchAtLogin: false,
-    hidden: false
+    hidden: false,
+    name: '',
+    color: 'green',
+    skin: 'slime', // body shape: slime | cat | ghost
+    cosmetic: 'none', // equipped headwear: none | glasses | scarf | crown
+    timeOfDay: true, // tint the pet warmer at night / brighter by day
+    wander: true, // let the pet stroll a few px on its own when idle
+    physics: true, // fling/throw the pet so it slides + bounces off edges
+    hotkey: 'CommandOrControl+Shift+P', // global show/hide toggle ('' to disable)
+    token: '', // shared secret the control server requires (also read by the hook)
+    stressTokens: 120000, // context size that flips the pet into the strained look
+    focus: { work: 25, break: 5 }, // pomodoro durations, in minutes
+    stats: null, // { date: 'YYYY-MM-DD', perAi: { claude: {...}, ... } }
+    lifetimeTasks: 0, // total completed tasks ever (drives cosmetic unlocks)
+    events: [] // missed-event log: [{ at, source, kind, text }], newest last
   };
 
   let data = { ...defaults };

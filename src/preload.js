@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld('petAPI', {
 
   // Events from main
   onClick: (cb) => ipcRenderer.on('pet-click', () => cb()),
+  onGrab: (cb) => ipcRenderer.on('pet-grabbed', () => cb()),
+  onDrop: (cb) => ipcRenderer.on('pet-dropped', () => cb()),
   onAiState: (cb) => ipcRenderer.on('ai-state', (_e, state) => cb(state)),
-  onSettings: (cb) => ipcRenderer.on('settings', (_e, settings) => cb(settings))
+  onSettings: (cb) => ipcRenderer.on('settings', (_e, settings) => cb(settings)),
+  onFocus: (cb) => ipcRenderer.on('focus', (_e, f) => cb(f)),
+  onNotice: (cb) => ipcRenderer.on('notice', (_e, text) => cb(text))
 });

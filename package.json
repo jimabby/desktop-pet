@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "A cross-platform desktop pet that reacts when your AI assistant is working.",
   "main": "src/main.js",
+  "bin": {
+    "pet": "hooks/pet-notify.js"
+  },
   "scripts": {
     "start": "node scripts/launch.js",
     "notify": "node hooks/pet-notify.js",

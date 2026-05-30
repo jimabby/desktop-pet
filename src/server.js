@@ -28,8 +28,13 @@ const http = require('http');
  * require a matching `X-Pet-Token` header. This stops random web pages you visit
  * from puppeting the pet via the open CORS policy. /health stays public.
  */
-function startControlServer(port, onState) {
-  const TOKEN = process.env.PET_TOKEN || '';
+function startControlServer(port, onState, opts = {}) {
+  // Token may be supplied live (e.g. from the GUI-editable store) so changing it
+  // takes effect without a restart; falls back to the PET_TOKEN env var.
+  const getToken =
+    typeof opts.getToken === 'function'
+      ? opts.getToken
+      : () => process.env.PET_TOKEN || '';
   // Schemes we're willing to open from a (potentially un-tokened) network call.
   // Keeps a random web page from POSTing e.g. a file:// link the pet would open.
   const ALLOWED_LINK_SCHEMES = new Set([
@@ -78,6 +83,7 @@ function startControlServer(port, onState) {
     }
 
     if (req.method === 'POST' && req.url === '/state') {
+      const TOKEN = getToken();
       if (TOKEN && req.headers['x-pet-token'] !== TOKEN) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: 'unauthorized' }));
@@ -106,7 +112,9 @@ function startControlServer(port, onState) {
           linkText: typeof data.linkText === 'string' ? data.linkText.slice(0, 60) : '',
           // A confirm/permission prompt that needs the user. Drives the bounce +
           // chime even when no editor link could be built (e.g. plain terminal).
-          attention: data.attention === true
+          attention: data.attention === true,
+          // Context-window size in tokens (drives the pet's usage ring).
+          ctx: Number.isFinite(data.ctx) ? Math.max(0, Math.min(data.ctx, 1e9)) : 0
         };
 
         onState(state);
