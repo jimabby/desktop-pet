@@ -1,0 +1,21 @@
+{
+  "_comment": "Merge the `hooks` block into your Claude Code settings.json (~/.claude/settings.json or .claude/settings.json). Replace ABSOLUTE_PATH with the full path to this repo's hooks/pet-notify.js. The script reads the hook event from stdin and tells the pet how to react. It fails silently if the pet app isn't running.",
+
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "node ABSOLUTE_PATH/hooks/pet-notify.js" }] }
+    ],
+    "PreToolUse": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "node ABSOLUTE_PATH/hooks/pet-notify.js" }] }
+    ],
+    "Notification": [
+      { "hooks": [{ "type": "command", "command": "node ABSOLUTE_PATH/hooks/pet-notify.js" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "node ABSOLUTE_PATH/hooks/pet-notify.js" }] }
+    ],
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "node ABSOLUTE_PATH/hooks/pet-notify.js" }] }
+    ]
+  }
+}

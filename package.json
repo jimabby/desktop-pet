@@ -1,0 +1,15 @@
+{
+  "name": "desktop-pet",
+  "version": "0.1.0",
+  "description": "A cross-platform desktop pet that reacts when your AI assistant is working.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "notify": "node hooks/pet-notify.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.2.0"
+  }
+}
