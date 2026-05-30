@@ -15,8 +15,10 @@ let selectedColor = 'green';
 let selectedSkin = 'slime';
 let selectedCosmetic = 'none';
 
-const SKIN_LABELS = { slime: 'Slime', cat: 'Cat', ghost: 'Ghost' };
-const COSMETIC_LABELS = { none: 'None', glasses: 'Glasses', scarf: 'Scarf', crown: 'Crown' };
+const SKIN_LABELS = { slime: 'Slime', cat: 'Cat', ghost: 'Ghost', bunny: 'Bunny' };
+const COSMETIC_LABELS = {
+  none: 'None', glasses: 'Glasses', scarf: 'Scarf', headphones: 'Headphones', crown: 'Crown'
+};
 
 function blobGradient(stops) {
   return `linear-gradient(160deg, ${stops[0]} 0%, ${stops[1]} 100%)`;

@@ -20,9 +20,14 @@ is working**.
   then lands with a squish. With **throw physics** on, *fling* it and it slides
   and bounces off the screen edges, **perching** if it lands near the top
 - **Wander mode** — left alone, the pet occasionally strolls a few px on its own
-- **Skins** — pick **slime**, **cat** (ears!), or **ghost** in Settings
-- **Unlockable cosmetics** — earn **glasses**, a **scarf**, and a **crown** by
-  racking up completed tasks, then equip them in Settings
+- **Skins** — pick **slime**, **cat** (ears!), **ghost**, or **bunny** (floppy
+  ears!) in Settings
+- **Unlockable cosmetics** — earn **glasses**, a **scarf**, **headphones**, and a
+  **crown** by racking up completed tasks, then equip them in Settings
+- **Tricks on demand** — from the tray's **Tricks** menu make the pet **dance**
+  (with music notes 🎵), **backflip**, **wave**, or **spin**
+- **Hover to tickle** — rest your cursor on the pet (no click) and it giggles
+- **Waves hello** — it waves when it first appears or when you summon it back
 - **Time-of-day tint** — warmer/dimmer at night, brighter midday
 - **Easter eggs** — **double-click** for a delighted spin; enter the **Konami code**
   (while the pet is focused) to go full rainbow 🌈
@@ -49,9 +54,9 @@ is working**.
 - **Confirm prompts** — when an AI needs your approval, the pet bounces with a `!`,
   chimes, and shows a clickable link back to your editor; **left unanswered it keeps
   nudging**, getting more insistent until you respond
-- **Tray menu**: show/hide, focus session, Today stats, Recent log, settings,
-  behavior toggles (wander / physics / time-of-day), resize, mute, launch at
-  login, reset position, quit
+- **Tray menu**: show/hide, wake/poke, tricks, focus session, Today stats, Recent
+  log, settings, behavior toggles (wander / physics / time-of-day), resize, mute,
+  launch at login, reset position, quit
 - **AI integration** via a tiny local control server + Claude Code hooks
 - **Optional token auth** so random web pages can't puppet your pet
 
@@ -79,13 +84,14 @@ the **tray icon** (the menu bar on macOS; there's no dock icon by design).
 
 ## Customizing your pet
 
-Open **Settings…** from the tray. The window covers:
+Open **Settings…** from the tray (or **right-click the pet**). The window covers:
 
 - **Name** — it'll introduce itself now and then, and the name shows in the tray
 - **Color** — pick a body color from a palette
-- **Skin** — slime, cat, or ghost
+- **Skin** — slime, cat, ghost, or bunny
 - **Cosmetic** — equip any headwear you've unlocked (locked ones show how many
-  completed tasks they need: glasses at 10, scarf at 40, crown at 120)
+  completed tasks they need: glasses at 10, scarf at 40, headphones at 75, crown
+  at 120)
 - **Behavior** — toggle sound effects, time-of-day tint, wander, and throw physics
 - **Focus** — set the work/break minutes for the Pomodoro timer
 - **Advanced** — set the global show/hide **hotkey** (an Electron accelerator,

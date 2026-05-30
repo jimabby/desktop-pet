@@ -21,10 +21,10 @@ const PALETTE = {
   gray: ['#cfd6e0', '#9aa7b8']
 };
 
-const SKINS = ['slime', 'cat', 'ghost'];
+const SKINS = ['slime', 'cat', 'ghost', 'bunny'];
 
 // Cosmetics and the lifetime-task count needed to unlock each. 'none' is free.
-const COSMETIC_UNLOCKS = { none: 0, glasses: 10, scarf: 40, crown: 120 };
+const COSMETIC_UNLOCKS = { none: 0, glasses: 10, scarf: 40, headphones: 75, crown: 120 };
 
 let win = null;
 let tray = null;
@@ -214,6 +214,10 @@ function createWindow() {
     // (hit-testing stays correct because this is a real layout zoom).
     win.webContents.setZoomFactor(scale);
     pushSettings();
+    // A little wave hello once the pet has settled in on screen.
+    if (!store.get('hidden')) {
+      setTimeout(() => win && win.webContents.send('pet-trick', 'wave'), 700);
+    }
   });
 }
 
@@ -549,10 +553,19 @@ ipcMain.on('drag-end', () => {
 function togglePetVisible() {
   if (!win) return;
   const nowHidden = win.isVisible();
-  if (nowHidden) win.hide();
-  else win.show();
+  if (nowHidden) {
+    win.hide();
+  } else {
+    win.show();
+    win.webContents.send('pet-trick', 'wave'); // a little hello when it reappears
+  }
   store.set('hidden', nowHidden);
   buildTrayMenu();
+}
+
+// Ask the pet to perform a trick (tray ▸ Tricks). The renderer animates it.
+function doTrick(name) {
+  if (win) win.webContents.send('pet-trick', name);
 }
 
 function toggleMuted() {
@@ -719,6 +732,9 @@ ipcMain.on('settings:close', () => {
   if (settingsWin) settingsWin.close();
 });
 
+// Right-clicking the pet opens the Settings window.
+ipcMain.on('open-settings', () => openSettings());
+
 function toggleLaunchAtLogin() {
   const open = !store.get('launchAtLogin');
   store.set('launchAtLogin', open);
@@ -737,6 +753,15 @@ function buildTrayMenu() {
     { type: 'separator' },
     { label: visible ? 'Hide pet' : 'Show pet', click: togglePetVisible },
     { label: 'Wake / Poke', click: () => win && win.webContents.send('pet-click') },
+    {
+      label: 'Tricks',
+      submenu: [
+        { label: '💃 Dance', click: () => doTrick('dance') },
+        { label: '🤸 Backflip', click: () => doTrick('flip') },
+        { label: '👋 Wave', click: () => doTrick('wave') },
+        { label: '🌀 Spin', click: () => doTrick('spin') }
+      ]
+    },
     { label: focusLabel(), click: toggleFocus },
     { label: 'Today', submenu: statsSubmenu() },
     { label: 'Recent', submenu: recentSubmenu() },

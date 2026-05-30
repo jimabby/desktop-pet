@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld('petAPI', {
   // Open a link from the bubble (e.g. jump back to the editor to confirm).
   openLink: (url) => ipcRenderer.send('open-link', url),
 
+  // Open the Settings window (e.g. from right-clicking the pet).
+  openSettings: () => ipcRenderer.send('open-settings'),
+
   // Events from main
   onClick: (cb) => ipcRenderer.on('pet-click', () => cb()),
   onGrab: (cb) => ipcRenderer.on('pet-grabbed', () => cb()),
@@ -23,5 +26,6 @@ contextBridge.exposeInMainWorld('petAPI', {
   onAiState: (cb) => ipcRenderer.on('ai-state', (_e, state) => cb(state)),
   onSettings: (cb) => ipcRenderer.on('settings', (_e, settings) => cb(settings)),
   onFocus: (cb) => ipcRenderer.on('focus', (_e, f) => cb(f)),
-  onNotice: (cb) => ipcRenderer.on('notice', (_e, text) => cb(text))
+  onNotice: (cb) => ipcRenderer.on('notice', (_e, text) => cb(text)),
+  onTrick: (cb) => ipcRenderer.on('pet-trick', (_e, name) => cb(name))
 });

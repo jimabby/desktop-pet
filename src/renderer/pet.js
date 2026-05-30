@@ -114,8 +114,8 @@ function updateCtxRing() {
 // Appearance (name, body color, skin shape, cosmetic, time-of-day) from settings.
 // ---------------------------------------------------------------------------
 let petName = '';
-const SKINS = ['slime', 'cat', 'ghost'];
-const COSMETICS = ['none', 'glasses', 'scarf', 'crown'];
+const SKINS = ['slime', 'cat', 'ghost', 'bunny'];
+const COSMETICS = ['none', 'glasses', 'scarf', 'headphones', 'crown'];
 let timeOfDayEnabled = true;
 
 function applyAppearance(a) {
@@ -208,11 +208,14 @@ function playSound(name) {
 // ---------------------------------------------------------------------------
 const HEART_GLYPHS = ['♥', '❤', '💕'];
 const SPARKLE_GLYPHS = ['✦', '✧', '⋆', '✨'];
+const STAR_GLYPHS = ['⭐', '🌟', '✨'];
+const NOTE_GLYPHS = ['♪', '♫', '♩', '♬'];
+const GLYPHS = { heart: HEART_GLYPHS, sparkle: SPARKLE_GLYPHS, star: STAR_GLYPHS, note: NOTE_GLYPHS };
 
 function spawnParticle(type) {
   const el = document.createElement('span');
   el.className = 'particle ' + type;
-  const glyphs = type === 'heart' ? HEART_GLYPHS : SPARKLE_GLYPHS;
+  const glyphs = GLYPHS[type] || SPARKLE_GLYPHS;
   el.textContent = glyphs[(Math.random() * glyphs.length) | 0];
   // Randomize the start x, sideways drift, rotation, and size so a burst looks
   // organic rather than a stack of identical glyphs.
@@ -234,10 +237,29 @@ function burst(type, count) {
 // ---------------------------------------------------------------------------
 // Mood control
 // ---------------------------------------------------------------------------
+// Flags that describe lasting state (not mood/source) and must survive a mood
+// change. Without preserving these, a setMood() would wipe the skin, equipped
+// cosmetic, focus glow, party hat, carry wobble, or the confirm-nudge bounce.
+const PERSISTENT_FLAGS = [
+  'blink', 'attention', 'attention-strong', 'party',
+  'grabbed', 'rainbow', 'focusing', 'bloom'
+];
+function isPersistentClass(c) {
+  return (
+    c.startsWith('skin-') ||
+    c.startsWith('cosmetic-') ||
+    c.startsWith('act-') ||
+    PERSISTENT_FLAGS.includes(c)
+  );
+}
+
 function applyClasses() {
+  // Keep skins, cosmetics, transient acts, and state flags; only the mood-* and
+  // source-* classes are recomputed here.
+  const keep = [...pet.classList].filter(isPersistentClass);
   pet.className = 'mood-' + currentMood;
-  const activeCount = activeAis.size;
-  if (activeCount > 1) {
+  keep.forEach((c) => pet.classList.add(c));
+  if (activeAis.size > 1) {
     pet.classList.add('source-many');
   } else if (currentSource && KNOWN_SOURCES.includes(currentSource)) {
     pet.classList.add('source-' + currentSource);
@@ -678,6 +700,39 @@ window.petAPI.onDrop(() => {
 });
 
 // ---------------------------------------------------------------------------
+// Tricks — perform on demand (tray ▸ Tricks, or a wave hello when shown). Each
+// is a CSS act-* class played briefly with a matching line + little flourish.
+// ---------------------------------------------------------------------------
+const TRICK_ACT = { dance: 'act-dance', flip: 'act-flip', wave: 'act-wave', spin: 'act-spin' };
+const TRICK_LINES = {
+  dance: ['💃 woo!', '~ ♪ ~', 'dance party!', 'feel the beat!'],
+  flip: ['hup!', 'ta-da! 🤸', 'nailed it!', 'did you see that?!'],
+  wave: ['hi there!', 'hellooo~', 'hey you! 👋', '*waves*'],
+  spin: ['wheee!', 'spinny!', '🌀', 'so dizzy~']
+};
+
+function playTrick(name) {
+  if (!TRICK_ACT[name]) name = 'dance';
+  lastInteraction = Date.now();
+  clearTimeout(happyResetTimer);
+  stopConfirmNudge({ restore: false });
+  pet.classList.remove(...ACT_CLASSES);
+  setSource('');
+  setMood('happy', { silent: true });
+  void pet.offsetWidth; // restart so a repeat trick re-triggers
+  pet.classList.add(TRICK_ACT[name]);
+  burst(name === 'dance' ? 'note' : 'sparkle', name === 'flip' ? 6 : 4);
+  const lines = TRICK_LINES[name];
+  say(lines[(Math.random() * lines.length) | 0], 1800);
+  happyResetTimer = setTimeout(() => {
+    pet.classList.remove(TRICK_ACT[name]);
+    if (activeAis.size) renderFromActiveAis();
+    else setMood('idle');
+  }, name === 'flip' ? 1000 : 1700);
+}
+window.petAPI.onTrick((name) => playTrick(name));
+
+// ---------------------------------------------------------------------------
 // Dragging (handled in main; we just signal start/end + keep interactive)
 // ---------------------------------------------------------------------------
 zone.addEventListener('mousedown', (e) => {
@@ -686,6 +741,13 @@ zone.addEventListener('mousedown', (e) => {
   window.petAPI.dragStart();
 });
 window.addEventListener('mouseup', () => window.petAPI.dragEnd());
+
+// Right-click the pet to open Settings.
+zone.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  lastInteraction = Date.now();
+  window.petAPI.openSettings();
+});
 
 // ---------------------------------------------------------------------------
 // Resizing: scroll the wheel over the pet to make it bigger / smaller.
@@ -735,12 +797,44 @@ function updateEyes(x, y) {
   pupils.forEach((p) => (p.style.transform = `translate(${ux}px, ${uy}px)`));
 }
 
+// Hover-to-tickle: rest the cursor on the pet for a moment (without clicking)
+// and it giggles. Once per hover, and only when it isn't busy or being summoned
+// for a confirm — so it never gets in the way of real work.
+const TICKLE_LINES = ['hehe~', 'that tickles!', '*giggle*', 'eep!', '^_^', 'hihi~'];
+let tickleTimer = null;
+let tickledThisHover = false;
+
+function startTickleDwell() {
+  tickledThisHover = false;
+  clearTimeout(tickleTimer);
+  tickleTimer = setTimeout(maybeTickle, 1400);
+}
+function cancelTickleDwell() {
+  clearTimeout(tickleTimer);
+  tickleTimer = null;
+}
+function maybeTickle() {
+  if (!interactiveNow || tickledThisHover) return;
+  if (confirmPending || activeAis.size) return; // stay out of the way
+  tickledThisHover = true;
+  lastInteraction = Date.now();
+  if (currentMood === 'sleeping') setMood('idle'); // hovering gently wakes it
+  burst('heart', 2);
+  pet.classList.remove(...ACT_CLASSES);
+  void pet.offsetWidth;
+  pet.classList.add('act-wiggle');
+  setTimeout(() => pet.classList.remove('act-wiggle'), 700);
+  say(TICKLE_LINES[(Math.random() * TICKLE_LINES.length) | 0], 1400);
+}
+
 let interactiveNow = false;
 window.addEventListener('mousemove', (e) => {
   const over = isOverInteractive(e.clientX, e.clientY);
   if (over !== interactiveNow) {
     interactiveNow = over;
     window.petAPI.setInteractive(over);
+    if (over) startTickleDwell();
+    else cancelTickleDwell();
   }
   // Throttle the eye tracking — mousemove fires very often.
   const now = Date.now();
@@ -766,18 +860,22 @@ setTimeout(blink, 2000);
 // class added briefly (see .act-* in style.css), except 'chatter' which is a
 // quick speech bubble. Weighted so hops/wiggles are common, spins are rare.
 const IDLE_LINES = ['hmm~', 'la la la~', '*yawn*', 'still here!', 'boop?', '~ ♪', 'so quiet...'];
-const ACT_CLASSES = ['act-hop', 'act-wiggle', 'act-spin', 'act-stretch', 'act-look'];
+const ACT_CLASSES = [
+  'act-hop', 'act-wiggle', 'act-spin', 'act-stretch', 'act-look',
+  'act-dance', 'act-flip', 'act-wave'
+];
 
 function doIdleAction() {
   const r = Math.random();
   let action;
-  if (r < 0.26) action = 'hop';
-  else if (r < 0.44) action = 'wiggle';
-  else if (r < 0.6) action = 'look';
-  else if (r < 0.74) action = 'stretch';
-  else if (r < 0.84) action = 'chatter';
-  else if (r < 0.93) action = 'sparkle';
-  else action = 'spin';
+  if (r < 0.24) action = 'hop';
+  else if (r < 0.42) action = 'wiggle';
+  else if (r < 0.57) action = 'look';
+  else if (r < 0.71) action = 'stretch';
+  else if (r < 0.81) action = 'chatter';
+  else if (r < 0.9) action = 'sparkle';
+  else if (r < 0.96) action = 'spin';
+  else action = 'dance';
 
   if (action === 'chatter') {
     let line = IDLE_LINES[(Math.random() * IDLE_LINES.length) | 0];
@@ -788,7 +886,14 @@ function doIdleAction() {
   }
 
   if (action === 'sparkle') {
-    burst('sparkle', 2 + ((Math.random() * 2) | 0));
+    // A burst of sparkles, or now and then a shower of stars instead.
+    burst(Math.random() < 0.3 ? 'star' : 'sparkle', 2 + ((Math.random() * 2) | 0));
+    return;
+  }
+
+  // A spontaneous little dance — reuse the full trick so it feels alive.
+  if (action === 'dance') {
+    playTrick('dance');
     return;
   }
 
