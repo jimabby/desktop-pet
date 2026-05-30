@@ -48,7 +48,7 @@ function notify(args, stdin) {
 
 (async () => {
   await request('/state', { mood: 'working', text: 'Refactoring auth', source: 'chatgpt', ttl: 8000 });
-  await notify(['happy', 'all done!']);
+  await notify(['done', 'all done!']);
   await notify([], '{"hook_event_name":"PreToolUse"}');
   await notify([], '{"hook_event_name":"Stop"}');
   const health = await request('/health');

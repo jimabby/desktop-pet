@@ -8,11 +8,15 @@
   <body>
     <!-- Only #pet-zone captures the mouse; everything else is click-through. -->
     <div id="stage">
-      <div id="bubble" class="hidden"><span id="bubble-text"></span></div>
+      <div id="bubble" class="hidden">
+        <span id="bubble-text"></span>
+        <span id="bubble-link" class="bubble-link hidden" role="button" tabindex="0"></span>
+      </div>
 
       <div id="pet-zone">
         <div id="pet" class="mood-idle">
           <div class="shadow"></div>
+          <div id="ai-badges" class="ai-badges hidden" aria-hidden="true"></div>
           <div class="body">
             <div class="eye left"><span class="pupil"></span></div>
             <div class="eye right"><span class="pupil"></span></div>

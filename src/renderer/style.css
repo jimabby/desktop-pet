@@ -56,6 +56,26 @@ body {
 #bubble.hidden {
   display: none;
 }
+
+/* Clickable "jump back to the editor" link inside the bubble. */
+.bubble-link {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  background: #6c63ff;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.bubble-link:hover {
+  background: #5a52e0;
+}
+.bubble-link.hidden {
+  display: none;
+}
 @keyframes pop {
   from { transform: scale(0.6); opacity: 0; }
   to   { transform: scale(1); opacity: 1; }
@@ -77,6 +97,72 @@ body {
   width: 110px;
   height: 110px;
 }
+
+/* "Needs you to confirm" — bounce + a little exclamation badge over the pet. */
+#pet.attention {
+  animation: attention-bounce 0.6s ease-in-out infinite;
+}
+#pet.attention::before {
+  content: "!";
+  position: absolute;
+  top: -10px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 14px;
+  color: #fff;
+  background: #ff5a7a;
+  border-radius: 50%;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+  z-index: 6;
+  animation: attention-pop 0.6s ease-in-out infinite;
+}
+@keyframes attention-bounce {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-9px); }
+}
+@keyframes attention-pop {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.18); }
+}
+
+.ai-badges {
+  position: absolute;
+  top: -18px;
+  left: 50%;
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  max-width: 170px;
+  transform: translateX(-50%);
+  z-index: 5;
+  pointer-events: none;
+}
+.ai-badges.hidden { display: none; }
+.ai-badge {
+  min-width: 21px;
+  height: 21px;
+  padding: 0 5px;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 21px;
+  text-align: center;
+  background: #5d6878;
+  border-radius: 999px;
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.22);
+  animation: badge-pop 0.22s ease-out, badge-bob 1.1s ease-in-out infinite;
+}
+.ai-badge:nth-child(2) { animation-delay: 0s, 0.16s; }
+.ai-badge:nth-child(3) { animation-delay: 0s, 0.32s; }
+.ai-badge:nth-child(4) { animation-delay: 0s, 0.48s; }
+.ai-badge.source-claude { background: #d97757; }
+.ai-badge.source-chatgpt { background: #10a37f; }
+.ai-badge.source-gemini { background: #4285f4; }
+.ai-badge.source-deepseek { background: #7d5fff; }
 
 .shadow {
   position: absolute;
@@ -179,9 +265,23 @@ body {
 
 /* idle: gentle breathe (default) */
 
-/* thinking: slow tilt + "..." feel */
-.mood-thinking .body { animation: breathe 2.2s ease-in-out infinite; }
-.mood-thinking { animation: tilt 2.4s ease-in-out infinite; }
+/* thinking: visible head tilt, searching eyes, and thought dots */
+.mood-thinking::before {
+  content: "...";
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  color: #2b2b3a;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0;
+  transform: translateX(-50%);
+  z-index: 4;
+  animation: thought-dots 1s steps(4, end) infinite;
+}
+.mood-thinking .body { animation: think-squish 1.1s ease-in-out infinite; }
+.mood-thinking .pupil { animation: look-around 1.3s ease-in-out infinite; }
+.mood-thinking { animation: tilt 1.2s ease-in-out infinite; }
 
 /* working: fast happy bounce */
 .mood-working .body {
@@ -189,6 +289,11 @@ body {
   background: linear-gradient(160deg, #8fd2ff 0%, #4aa8f0 100%);
 }
 .mood-working { animation: hop 0.5s ease-in-out infinite; }
+
+.source-many.mood-thinking,
+.source-many.mood-working {
+  animation: team-hop 0.62s ease-in-out infinite;
+}
 
 /* happy: big bounce + open smile */
 .mood-happy .body {
@@ -199,6 +304,37 @@ body {
   height: 12px;
   width: 18px;
   border-width: 3px;
+}
+
+/* stressed: heavy context — flushed red, tense tremble, a sliding sweat drop */
+.mood-stressed .body {
+  background: linear-gradient(160deg, #ff8f6b 0%, #e8473c 100%);
+  animation: stress-strain 0.85s ease-in-out infinite;
+}
+.mood-stressed { animation: stress-tremble 0.16s ease-in-out infinite; }
+/* gritted, flat mouth */
+.mood-stressed .mouth {
+  top: 58px;
+  width: 16px;
+  height: 0;
+  border: 0;
+  border-top: 2px solid #2b2b3a;
+  border-radius: 0;
+}
+/* sweat drop near the temple */
+.mood-stressed .body::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  width: 8px;
+  height: 8px;
+  background: #8ed0ff;
+  border-radius: 0 50% 50% 50%;
+  transform: rotate(45deg);
+  box-shadow: inset -1px -1px 0 rgba(0, 0, 0, 0.12);
+  z-index: 3;
+  animation: sweat-drop 1.1s ease-in-out infinite;
 }
 
 /* error: red, shaking */
@@ -228,8 +364,37 @@ body {
 .source-chatgpt  .body { box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.65), 0 0 14px rgba(16, 163, 127, 0.5); }
 .source-gemini   .body { box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.65), 0 0 14px rgba(66, 133, 244, 0.5); }
 .source-deepseek .body { box-shadow: 0 0 0 3px rgba(125, 95, 255, 0.65), 0 0 14px rgba(125, 95, 255, 0.5); }
+.source-many .body {
+  box-shadow:
+    0 0 0 3px rgba(16, 163, 127, 0.5),
+    0 0 0 7px rgba(217, 119, 87, 0.34),
+    0 0 18px rgba(66, 133, 244, 0.55);
+}
+
+/* ============ IDLE ONE-OFF ACTIONS ============ */
+/* JS adds one of these briefly while the pet is idle, then removes it. */
+#pet.act-hop { animation: hop 0.45s ease-in-out; }
+#pet.act-wiggle { animation: idle-wiggle 0.7s ease-in-out; }
+#pet.act-spin { animation: idle-spin 0.8s ease-in-out; }
+#pet.act-stretch .body { animation: idle-stretch 0.8s ease-in-out; }
+#pet.act-look .pupil { animation: look-around 1.2s ease-in-out; }
 
 /* ============ KEYFRAMES ============ */
+@keyframes idle-wiggle {
+  0%, 100% { transform: rotate(0); }
+  20%      { transform: rotate(-9deg); }
+  55%      { transform: rotate(9deg); }
+  80%      { transform: rotate(-4deg); }
+}
+@keyframes idle-spin {
+  0%   { transform: rotate(0) scale(1); }
+  50%  { transform: rotate(180deg) scale(0.92); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+@keyframes idle-stretch {
+  0%, 100% { transform: translateX(-50%) scaleY(1) scaleX(1); }
+  45%      { transform: translateX(-50%) scaleY(1.14) scaleX(0.9); }
+}
 @keyframes breathe {
   0%, 100% { transform: translateX(-50%) scaleY(1) scaleX(1); }
   50%      { transform: translateX(-50%) scaleY(0.96) scaleX(1.03); }
@@ -241,6 +406,10 @@ body {
 @keyframes sleep-breathe {
   0%, 100% { transform: translateX(-50%) scaleY(0.9) scaleX(1.05); }
   50%      { transform: translateX(-50%) scaleY(0.86) scaleX(1.08); }
+}
+@keyframes think-squish {
+  0%, 100% { transform: translateX(-50%) scaleY(1) scaleX(1); }
+  50%      { transform: translateX(-50%) scaleY(0.92) scaleX(1.06); }
 }
 @keyframes work-squish {
   0%, 100% { transform: translateX(-50%) scaleY(1) scaleX(1); }
@@ -254,17 +423,55 @@ body {
   0%, 100% { transform: translateY(0); }
   50%      { transform: translateY(-10px); }
 }
+@keyframes team-hop {
+  0%, 100% { transform: translateY(0) rotate(-3deg); }
+  35%      { transform: translateY(-12px) rotate(4deg); }
+  70%      { transform: translateY(-4px) rotate(-5deg); }
+}
 @keyframes tilt {
-  0%, 100% { transform: rotate(-4deg); }
-  50%      { transform: rotate(4deg); }
+  0%, 100% { transform: rotate(-7deg); }
+  50%      { transform: rotate(7deg); }
 }
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   25%      { transform: translateX(-6px); }
   75%      { transform: translateX(6px); }
 }
+@keyframes stress-tremble {
+  0%, 100% { transform: translate(0, 0); }
+  25%      { transform: translate(-1.5px, 1px); }
+  75%      { transform: translate(1.5px, -1px); }
+}
+@keyframes stress-strain {
+  0%, 100% { transform: translateX(-50%) scaleY(1) scaleX(1); }
+  50%      { transform: translateX(-50%) scaleY(0.94) scaleX(1.05); }
+}
+@keyframes sweat-drop {
+  0%       { opacity: 0; transform: translateY(-2px) rotate(45deg); }
+  25%      { opacity: 1; }
+  100%     { opacity: 0; transform: translateY(12px) rotate(45deg); }
+}
 @keyframes float-z {
   0%   { opacity: 0; transform: translateY(0) scale(0.8); }
   40%  { opacity: 1; }
   100% { opacity: 0; transform: translateY(-14px) scale(1.1); }
+}
+@keyframes look-around {
+  0%, 100% { transform: translateX(-2px); }
+  50%      { transform: translateX(3px); }
+}
+@keyframes thought-dots {
+  0%   { content: ""; }
+  25%  { content: "."; }
+  50%  { content: ".."; }
+  75%,
+  100% { content: "..."; }
+}
+@keyframes badge-pop {
+  from { opacity: 0; transform: translateY(5px) scale(0.7); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes badge-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
 }

@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, shell } = require('electron');
 const path = require('path');
 const { startControlServer } = require('./server');
 const { createStore } = require('./store');
@@ -14,6 +14,16 @@ let store = null;
 const WIN_W = 240;
 const WIN_H = 320;
 
+// How big the pet can get. 1 = default size.
+const MIN_SCALE = 0.6;
+const MAX_SCALE = 2.5;
+const SCALE_STEP = 0.1;
+
+function clampScale(s) {
+  if (!Number.isFinite(s)) return 1;
+  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
+}
+
 // ---- Drag state (handled in main so coordinates stay in global screen space) ----
 let dragTimer = null;
 let dragOffset = { x: 0, y: 0 };
@@ -26,23 +36,27 @@ function defaultPosition() {
 }
 
 // Keep the window on a visible display (handles unplugged monitors / changed resolutions).
-function clampToScreen(x, y) {
-  const area = screen.getDisplayMatching({ x, y, width: WIN_W, height: WIN_H }).workArea;
+function clampToScreen(x, y, w = WIN_W, h = WIN_H) {
+  const area = screen.getDisplayMatching({ x, y, width: w, height: h }).workArea;
   return {
-    x: Math.min(Math.max(x, area.x), area.x + area.width - WIN_W),
-    y: Math.min(Math.max(y, area.y), area.y + area.height - WIN_H)
+    x: Math.min(Math.max(x, area.x), area.x + area.width - w),
+    y: Math.min(Math.max(y, area.y), area.y + area.height - h)
   };
 }
 
 function createWindow() {
+  const scale = clampScale(store.get('scale'));
+  const w = Math.round(WIN_W * scale);
+  const h = Math.round(WIN_H * scale);
+
   let { x, y } = store.get('x') != null
     ? { x: store.get('x'), y: store.get('y') }
     : defaultPosition();
-  ({ x, y } = clampToScreen(x, y));
+  ({ x, y } = clampToScreen(x, y, w, h));
 
   win = new BrowserWindow({
-    width: WIN_W,
-    height: WIN_H,
+    width: w,
+    height: h,
     x,
     y,
     frame: false,
@@ -72,8 +86,39 @@ function createWindow() {
 
   // Push current settings to the renderer once it's ready.
   win.webContents.on('did-finish-load', () => {
+    // Zoom the whole UI to match the window size so the pet scales cleanly
+    // (hit-testing stays correct because this is a real layout zoom).
+    win.webContents.setZoomFactor(scale);
     win.webContents.send('settings', { muted: store.get('muted') });
   });
+}
+
+// Resize the pet by changing the window size + matching the page zoom, keeping
+// the pet (which sits at the bottom-center) visually anchored in place.
+function applyScale(scale) {
+  scale = clampScale(scale);
+  store.set('scale', scale);
+  if (!win) return;
+
+  const w = Math.round(WIN_W * scale);
+  const h = Math.round(WIN_H * scale);
+  const [x, y] = win.getPosition();
+  const [ow, oh] = win.getSize();
+
+  const next = clampToScreen(
+    Math.round(x + (ow - w) / 2),
+    Math.round(y + (oh - h)),
+    w,
+    h
+  );
+
+  win.setBounds({ x: next.x, y: next.y, width: w, height: h });
+  win.webContents.setZoomFactor(scale);
+  savePosition();
+}
+
+function stepScale(direction) {
+  applyScale(clampScale(store.get('scale')) + direction * SCALE_STEP);
 }
 
 function savePosition() {
@@ -115,6 +160,31 @@ ipcMain.on('drag-start', () => {
     );
     win.setPosition(p.x - dragOffset.x, p.y - dragOffset.y);
   }, 16);
+});
+
+// Scroll the wheel over the pet to resize it.
+ipcMain.on('resize-step', (_e, direction) => {
+  stepScale(direction > 0 ? 1 : -1);
+});
+
+// ---------------------------------------------------------------------------
+// IPC: open a link from the bubble (e.g. "jump back to the editor to confirm")
+// ---------------------------------------------------------------------------
+const ALLOWED_LINK_SCHEMES = new Set([
+  'http:',
+  'https:',
+  'vscode:',
+  'vscode-insiders:',
+  'cursor:',
+  'windsurf:'
+]);
+ipcMain.on('open-link', (_e, url) => {
+  if (typeof url !== 'string') return;
+  try {
+    if (ALLOWED_LINK_SCHEMES.has(new URL(url).protocol)) shell.openExternal(url);
+  } catch {
+    /* not a valid URL — ignore */
+  }
 });
 
 ipcMain.on('drag-end', () => {
@@ -173,6 +243,34 @@ function buildTrayMenu() {
         win.setPosition(x, y);
         savePosition();
       }
+    },
+    {
+      label: 'Size',
+      submenu: [
+        {
+          label: 'Bigger',
+          enabled: clampScale(store.get('scale')) < MAX_SCALE,
+          click: () => {
+            stepScale(1);
+            buildTrayMenu();
+          }
+        },
+        {
+          label: 'Smaller',
+          enabled: clampScale(store.get('scale')) > MIN_SCALE,
+          click: () => {
+            stepScale(-1);
+            buildTrayMenu();
+          }
+        },
+        {
+          label: 'Reset size',
+          click: () => {
+            applyScale(1);
+            buildTrayMenu();
+          }
+        }
+      ]
     },
     { type: 'separator' },
     { label: 'Mute sounds', type: 'checkbox', checked: !!store.get('muted'), click: toggleMuted },

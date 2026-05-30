@@ -11,10 +11,14 @@ const http = require('http');
  *   { "mood": "working", "text": "Refactoring auth...", "source": "claude", "ttl": 8000 }
  *
  * Fields:
- *   mood   - idle | thinking | working | happy | sleeping | error  (default: idle)
- *   text   - optional speech-bubble message
- *   source - optional label (claude | chatgpt | gemini | deepseek | ...)
- *   ttl    - optional ms after which the pet returns to idle
+ *   mood     - idle | thinking | working | happy | sleeping | error  (default: idle)
+ *   text     - optional speech-bubble message
+ *   source   - optional label (claude | chatgpt | gemini | deepseek | ...)
+ *   ttl      - optional ms after which the pet returns to idle
+ *   link     - optional URL to open when the bubble is clicked (e.g. a
+ *              vscode://file/... link to jump back to the editor for a confirm).
+ *              Only safe schemes are accepted (http/https/vscode/cursor/...).
+ *   linkText - optional label for that link (default: "Open →")
  *
  * GET /health  -> { ok: true }  (handy for scripts to check the pet is up)
  *
@@ -24,11 +28,33 @@ const http = require('http');
  */
 function startControlServer(port, onState) {
   const TOKEN = process.env.PET_TOKEN || '';
+  // Schemes we're willing to open from a (potentially un-tokened) network call.
+  // Keeps a random web page from POSTing e.g. a file:// link the pet would open.
+  const ALLOWED_LINK_SCHEMES = new Set([
+    'http:',
+    'https:',
+    'vscode:',
+    'vscode-insiders:',
+    'cursor:',
+    'windsurf:'
+  ]);
+
+  function safeLink(raw) {
+    if (typeof raw !== 'string' || !raw) return '';
+    const s = raw.slice(0, 2048);
+    try {
+      return ALLOWED_LINK_SCHEMES.has(new URL(s).protocol) ? s : '';
+    } catch {
+      return '';
+    }
+  }
+
   const VALID_MOODS = new Set([
     'idle',
     'thinking',
     'working',
     'happy',
+    'stressed',
     'sleeping',
     'error'
   ]);
@@ -73,7 +99,9 @@ function startControlServer(port, onState) {
           mood: VALID_MOODS.has(data.mood) ? data.mood : 'idle',
           text: typeof data.text === 'string' ? data.text.slice(0, 280) : '',
           source: typeof data.source === 'string' ? data.source.slice(0, 40) : '',
-          ttl: Number.isFinite(data.ttl) ? Math.max(0, Math.min(data.ttl, 120000)) : 0
+          ttl: Number.isFinite(data.ttl) ? Math.max(0, Math.min(data.ttl, 120000)) : 0,
+          link: safeLink(data.link),
+          linkText: typeof data.linkText === 'string' ? data.linkText.slice(0, 60) : ''
         };
 
         onState(state);

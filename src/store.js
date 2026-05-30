@@ -12,6 +12,7 @@ function createStore(app) {
   const defaults = {
     x: null,
     y: null,
+    scale: 1,
     muted: false,
     launchAtLogin: false,
     hidden: false

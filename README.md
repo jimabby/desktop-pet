@@ -12,12 +12,15 @@ when an AI assistant (Claude, ChatGPT, Gemini, DeepSeek, …) is working**.
 - Transparent, frameless, always-on-top window
 - **Click-through** on empty areas — it won't block the app behind it
 - **Drag** to reposition anywhere — **position is remembered** across restarts
+- **Resize** — scroll over the pet (or use the tray) to scale it 0.6×–2.5×, **size is remembered**
 - **Click/poke** reactions
 - **Speech bubbles**
 - **Idle behaviors**: blinking, little hops, falls asleep when ignored
-- **Per-AI tint** — a colored glow shows which assistant is driving it
+- **Per-AI tint + badges** — a colored glow and badges show which assistant is driving it
+- **Multi-AI mode** — if Claude, ChatGPT, Gemini, etc. are active together, the pet switches into a team-up bounce
 - **Sound chimes** on done/error (toggle from the tray)
-- **Tray menu**: show/hide, mute sounds, launch at login, reset position, quit
+- **Confirm prompts** — when an AI needs your approval, the pet bounces with a `!`, chimes, and shows a clickable link back to your editor
+- **Tray menu**: show/hide, mute sounds, resize, launch at login, reset position, quit
 - **AI integration** via a tiny local control server + Claude Code hooks
 - **Optional token auth** so random web pages can't puppet your pet
 
@@ -32,8 +35,16 @@ npm start
 ```
 
 The pet appears bottom-right (or wherever you last left it). Everything else —
-show/hide, mute sounds, launch at login, reset position, quit — lives in the
-**tray icon** (the menu bar on macOS; there's no dock icon by design).
+show/hide, mute sounds, resize, launch at login, reset position, quit — lives in
+the **tray icon** (the menu bar on macOS; there's no dock icon by design).
+
+## Moving & resizing
+
+- **Move** — drag the pet anywhere. A small click is treated as a poke; an
+  actual drag moves it. The position is saved and restored on next launch.
+- **Resize** — hover the pointer over the pet and **scroll** (two-finger swipe up
+  on a Mac trackpad = bigger, down = smaller), or use the tray menu
+  **Size → Bigger / Smaller / Reset size**. The scale (0.6×–2.5×) is remembered.
 
 ## How AI reactions work
 
@@ -46,18 +57,50 @@ curl -s localhost:7337/state \
   -d '{"mood":"working","text":"Refactoring auth...","source":"chatgpt","ttl":8000}'
 ```
 
-| field    | values                                                        |
-| -------- | ------------------------------------------------------------- |
-| `mood`   | `idle` `thinking` `working` `happy` `sleeping` `error`        |
-| `text`   | optional speech-bubble message                                |
-| `source` | optional label shown before the text (e.g. `claude`)          |
-| `ttl`    | optional ms, then the pet returns to idle automatically       |
+| field      | values                                                              |
+| ---------- | ------------------------------------------------------------------- |
+| `mood`     | `idle` `thinking` `working` `happy` `sleeping` `error`              |
+| `text`     | optional speech-bubble message                                      |
+| `source`   | optional label shown before the text (e.g. `claude`)               |
+| `ttl`      | optional ms, then the pet returns to idle automatically            |
+| `link`     | optional URL opened when the bubble (or pet) is clicked; safe schemes only (`http` `https` `vscode` `vscode-insiders` `cursor` `windsurf`) |
+| `linkText` | optional label for that link (default `Open →`)                     |
 
 `GET /health` returns `{ ok: true }` so scripts can check the pet is up.
 
 The `source` is also used to tint the pet (`claude`, `chatgpt`, `gemini`,
-`deepseek` each get their own glow color); `happy` and `error` moods play a
-short chime unless you've muted sounds from the tray.
+`deepseek` each get their own glow color). Active sources also appear as little
+badges above the pet. If multiple sources are active at once, the pet shows a
+combined glow, bouncy team-up animation, and a bubble like
+`Claude + ChatGPT + Gemini are working together...`.
+
+Try the three-AI state manually:
+
+```bash
+curl -s localhost:7337/state -H 'Content-Type: application/json' \
+  -d '{"mood":"thinking","text":"Claude is planning...","source":"claude","ttl":15000}'
+curl -s localhost:7337/state -H 'Content-Type: application/json' \
+  -d '{"mood":"working","text":"ChatGPT is drafting...","source":"chatgpt","ttl":15000}'
+curl -s localhost:7337/state -H 'Content-Type: application/json' \
+  -d '{"mood":"thinking","text":"Gemini is checking...","source":"gemini","ttl":15000}'
+```
+
+Send a specific source back to idle when it finishes:
+
+```bash
+curl -s localhost:7337/state -H 'Content-Type: application/json' \
+  -d '{"mood":"idle","source":"gemini"}'
+```
+
+Or clear every active AI:
+
+```bash
+curl -s localhost:7337/state -H 'Content-Type: application/json' \
+  -d '{"mood":"idle"}'
+```
+
+`happy` and `error` moods play a short chime unless you've muted sounds from the
+tray.
 
 ### Locking it down (optional token)
 
@@ -86,6 +129,19 @@ when Claude finishes (and quiets down on session end). The hook script fails
 silently if the pet isn't running. If you set a `PET_TOKEN`, export it in the
 environment Claude Code runs in too.
 
+**Confirm / permission prompts.** On Claude Code's `Notification` event (when it
+needs your approval or is waiting on you), the pet bounces with a `!` badge,
+chimes, and shows the message plus an **"Open editor →"** link. Clicking the link
+— or just poking the pet — focuses your editor on the project so you can answer.
+The link is auto-built from the project path and editor:
+
+- `PET_EDITOR_SCHEME` — force the scheme (`vscode`, `vscode-insiders`, `cursor`,
+  `windsurf`). Default: auto-detected from the terminal, falling back to `vscode`.
+- `PET_OPEN_URL` — override the link entirely with a URL of your choice.
+
+If Claude Code is running in a plain terminal (no detectable editor), the prompt
+still shows but without a clickable link.
+
 ### ChatGPT / Gemini / DeepSeek / anything else
 
 There's no universal hook system for those, so trigger the same endpoint from
@@ -94,8 +150,9 @@ wherever you can:
 - **API wrappers / your own scripts**: call `localhost:7337/state` before/after
   a request (or use [hooks/pet-notify.js](hooks/pet-notify.js)):
   ```bash
-  node hooks/pet-notify.js working "asking ChatGPT..."
-  node hooks/pet-notify.js happy "got an answer!"
+  PET_SOURCE=chatgpt node hooks/pet-notify.js thinking "asking ChatGPT..."
+  PET_SOURCE=chatgpt node hooks/pet-notify.js happy "got an answer!"
+  PET_SOURCE=gemini node hooks/pet-notify.js working "asking Gemini..."
   ```
 - **Browser extension / userscript** (ChatGPT/Gemini web): watch for the
   "generating" state and `fetch('http://localhost:7337/state', …)`. CORS is open.
