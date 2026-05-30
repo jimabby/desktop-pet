@@ -19,6 +19,8 @@ const http = require('http');
  *              vscode://file/... link to jump back to the editor for a confirm).
  *              Only safe schemes are accepted (http/https/vscode/cursor/...).
  *   linkText - optional label for that link (default: "Open →")
+ *   attention- optional bool; true marks a confirm/permission prompt so the pet
+ *              bounces + chimes for your attention even with no link.
  *
  * GET /health  -> { ok: true }  (handy for scripts to check the pet is up)
  *
@@ -101,7 +103,10 @@ function startControlServer(port, onState) {
           source: typeof data.source === 'string' ? data.source.slice(0, 40) : '',
           ttl: Number.isFinite(data.ttl) ? Math.max(0, Math.min(data.ttl, 120000)) : 0,
           link: safeLink(data.link),
-          linkText: typeof data.linkText === 'string' ? data.linkText.slice(0, 60) : ''
+          linkText: typeof data.linkText === 'string' ? data.linkText.slice(0, 60) : '',
+          // A confirm/permission prompt that needs the user. Drives the bounce +
+          // chime even when no editor link could be built (e.g. plain terminal).
+          attention: data.attention === true
         };
 
         onState(state);

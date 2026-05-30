@@ -261,6 +261,77 @@ body {
 }
 .zzz span { font-size: 11px; opacity: 0.8; }
 
+/* ---------- Decorations ---------- */
+/* A little leaf sprout on the pet's head. Sways gently; perks up when happy. */
+.sprout {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+  z-index: 2;
+  transform-origin: bottom center;
+  animation: sprout-sway 3.4s ease-in-out infinite;
+}
+.sprout .leaf {
+  position: absolute;
+  bottom: 0;
+  width: 15px;
+  height: 10px;
+  background: linear-gradient(160deg, #8be0a4 0%, #3fb56e 100%);
+  box-shadow: inset 2px 2px 0 rgba(255, 255, 255, 0.3);
+}
+.sprout .leaf.left {
+  left: -13px;
+  border-radius: 100% 0 100% 0;
+  transform: rotate(18deg);
+}
+.sprout .leaf.right {
+  left: -2px;
+  border-radius: 0 100% 0 100%;
+  transform: rotate(-18deg);
+}
+.mood-happy .sprout { animation: sprout-perk 0.35s ease-in-out 4; }
+.mood-sleeping .sprout { animation: sprout-sway 6s ease-in-out infinite; }
+
+/* ---------- Particle layer (hearts / sparkles) ---------- */
+.particles {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  overflow: visible;
+}
+.particle {
+  position: absolute;
+  left: 50%;
+  top: 24px;
+  font-size: 16px;
+  line-height: 1;
+  pointer-events: none;
+  transform: translateX(-50%);
+  animation: particle-float 1100ms ease-out forwards;
+}
+.particle.heart { color: #ff6b8a; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.18); }
+.particle.sparkle { color: #ffe27a; text-shadow: 0 0 7px rgba(255, 226, 122, 0.85); }
+@keyframes particle-float {
+  0%   { opacity: 0; transform: translate(-50%, 0) scale(0.4) rotate(0deg); }
+  20%  { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--dx, 0px)), -48px) scale(1) rotate(var(--rot, 0deg));
+  }
+}
+@keyframes sprout-sway {
+  0%, 100% { transform: translateX(-50%) rotate(-6deg); }
+  50%      { transform: translateX(-50%) rotate(6deg); }
+}
+@keyframes sprout-perk {
+  0%, 100% { transform: translateX(-50%) scaleY(1); }
+  50%      { transform: translateX(-50%) scaleY(1.25); }
+}
+
 /* ============ MOODS ============ */
 
 /* idle: gentle breathe (default) */

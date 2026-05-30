@@ -6,6 +6,9 @@ const bubble = document.getElementById('bubble');
 const bubbleText = document.getElementById('bubble-text');
 const bubbleLink = document.getElementById('bubble-link');
 const aiBadges = document.getElementById('ai-badges');
+const particles = document.getElementById('particles');
+const body = document.querySelector('.body');
+const pupils = document.querySelectorAll('.pupil');
 
 const MOODS = ['idle', 'thinking', 'working', 'happy', 'stressed', 'sleeping', 'error'];
 const MOOD_PRIORITY = {
@@ -82,6 +85,36 @@ function playSound(name) {
 }
 
 // ---------------------------------------------------------------------------
+// Particles — little hearts (petting) and sparkles (delight). Each is a span
+// that floats up and fades via CSS, then removes itself. Pointer-events: none,
+// so they never affect the click-through hit-testing.
+// ---------------------------------------------------------------------------
+const HEART_GLYPHS = ['♥', '❤', '💕'];
+const SPARKLE_GLYPHS = ['✦', '✧', '⋆', '✨'];
+
+function spawnParticle(type) {
+  const el = document.createElement('span');
+  el.className = 'particle ' + type;
+  const glyphs = type === 'heart' ? HEART_GLYPHS : SPARKLE_GLYPHS;
+  el.textContent = glyphs[(Math.random() * glyphs.length) | 0];
+  // Randomize the start x, sideways drift, rotation, and size so a burst looks
+  // organic rather than a stack of identical glyphs.
+  el.style.left = 30 + Math.random() * 50 + 'px';
+  el.style.setProperty('--dx', (Math.random() * 40 - 20).toFixed(0) + 'px');
+  el.style.setProperty('--rot', (Math.random() * 60 - 30).toFixed(0) + 'deg');
+  el.style.fontSize = 12 + Math.random() * 8 + 'px';
+  el.style.animationDuration = 900 + Math.random() * 500 + 'ms';
+  el.addEventListener('animationend', () => el.remove());
+  particles.appendChild(el);
+}
+
+function burst(type, count) {
+  for (let i = 0; i < count; i++) {
+    setTimeout(() => spawnParticle(type), i * 80);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Mood control
 // ---------------------------------------------------------------------------
 function applyClasses() {
@@ -101,6 +134,7 @@ function setMood(mood, { silent = false } = {}) {
   applyClasses();
   if (changed && !silent && (mood === 'happy' || mood === 'error')) {
     playSound(mood);
+    if (mood === 'happy') burst('sparkle', 3); // a little "done!" celebration
   }
 }
 
@@ -263,8 +297,9 @@ window.petAPI.onAiState((state) => {
     renderFromActiveAis();
   }
 
-  if (state.link) {
-    // A confirm/permission prompt: show the message + a link back to the editor.
+  if (state.attention || state.link) {
+    // A confirm/permission prompt. The link (jump back to the editor) is
+    // optional — the bounce + chime fire either way so it's never missed.
     const prefix = state.source ? `${state.source}: ` : '';
     say(prefix + (state.text || 'needs you to confirm'), state.ttl || 60000, state.link, state.linkText);
     attention();
@@ -290,16 +325,40 @@ const POKE_LINES = [
   'i missed you',
   '^_^'
 ];
+// Said when you keep petting — the pet warms up the more you poke it.
+const LOVE_LINES = ['hehe that tickles!', 'more more~', "you're the best!", 'I love you! 💕', '*happy wiggle*'];
+
+// Track how fast you're poking so repeated pets escalate into a heart shower.
+let pokeStreak = 0;
+let pokeStreakTimer = null;
 
 function react() {
   lastInteraction = Date.now();
   // If a confirm prompt is waiting, a poke opens the editor instead of playing.
   if (openPendingLink()) return;
+
+  pokeStreak++;
+  clearTimeout(pokeStreakTimer);
+  pokeStreakTimer = setTimeout(() => (pokeStreak = 0), 1400);
+
   setSource('');
   setMood('happy', { silent: true }); // poking shouldn't spam the chime
-  say(POKE_LINES[(Math.random() * POKE_LINES.length) | 0], 1800);
+  pet.classList.remove(...ACT_CLASSES);
+  void pet.offsetWidth; // restart so rapid pokes re-trigger the wiggle
+  pet.classList.add('act-wiggle');
+
+  // A few pets in a row -> gush hearts + a sweeter line; otherwise a small boop.
+  if (pokeStreak >= 4) {
+    burst('heart', 4 + Math.min(pokeStreak, 6));
+    say(LOVE_LINES[(Math.random() * LOVE_LINES.length) | 0], 1800);
+  } else {
+    burst('heart', 2);
+    say(POKE_LINES[(Math.random() * POKE_LINES.length) | 0], 1800);
+  }
+
   clearTimeout(happyResetTimer);
   happyResetTimer = setTimeout(() => {
+    pet.classList.remove('act-wiggle');
     if (activeAis.size) renderFromActiveAis();
     else setMood('idle');
   }, 1500);
@@ -344,12 +403,39 @@ function isOverInteractive(x, y) {
   const el = document.elementFromPoint(x, y);
   return el && (zone.contains(el) || bubble.contains(el));
 }
+
+// Eyes follow the cursor while idle, so it feels like the pet is watching you.
+// Active moods animate the pupils themselves, so we only track during idle.
+let lastEyeAt = 0;
+function updateEyes(x, y) {
+  if (currentMood !== 'idle') {
+    pupils.forEach((p) => (p.style.transform = ''));
+    return;
+  }
+  const rect = body.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height * 0.42;
+  const dx = x - cx;
+  const dy = y - cy;
+  const dist = Math.hypot(dx, dy) || 1;
+  const max = 3.2; // how far the pupils can shift, in px
+  const ux = ((dx / dist) * max).toFixed(1);
+  const uy = ((dy / dist) * max).toFixed(1);
+  pupils.forEach((p) => (p.style.transform = `translate(${ux}px, ${uy}px)`));
+}
+
 let interactiveNow = false;
 window.addEventListener('mousemove', (e) => {
   const over = isOverInteractive(e.clientX, e.clientY);
   if (over !== interactiveNow) {
     interactiveNow = over;
     window.petAPI.setInteractive(over);
+  }
+  // Throttle the eye tracking — mousemove fires very often.
+  const now = Date.now();
+  if (now - lastEyeAt > 40) {
+    lastEyeAt = now;
+    updateEyes(e.clientX, e.clientY);
   }
 });
 
@@ -374,15 +460,21 @@ const ACT_CLASSES = ['act-hop', 'act-wiggle', 'act-spin', 'act-stretch', 'act-lo
 function doIdleAction() {
   const r = Math.random();
   let action;
-  if (r < 0.3) action = 'hop';
-  else if (r < 0.5) action = 'wiggle';
-  else if (r < 0.68) action = 'look';
-  else if (r < 0.83) action = 'stretch';
-  else if (r < 0.92) action = 'chatter';
+  if (r < 0.26) action = 'hop';
+  else if (r < 0.44) action = 'wiggle';
+  else if (r < 0.6) action = 'look';
+  else if (r < 0.74) action = 'stretch';
+  else if (r < 0.84) action = 'chatter';
+  else if (r < 0.93) action = 'sparkle';
   else action = 'spin';
 
   if (action === 'chatter') {
     say(IDLE_LINES[(Math.random() * IDLE_LINES.length) | 0], 1800);
+    return;
+  }
+
+  if (action === 'sparkle') {
+    burst('sparkle', 2 + ((Math.random() * 2) | 0));
     return;
   }
 

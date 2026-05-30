@@ -210,7 +210,11 @@ if (moodArg) {
         text: payload.message ? String(payload.message).slice(0, 160) : state.text,
         ttl: state.ttl,
         link,
-        linkText: link ? 'Open editor →' : ''
+        linkText: link ? 'Open editor →' : '',
+        // Always grab the user's attention for a confirm prompt — the link is a
+        // nice-to-have shortcut, not the trigger. (A plain-terminal Claude Code
+        // builds no link, but the pet should still bounce + chime.)
+        attention: true
       });
     }
 

@@ -13,9 +13,11 @@ when an AI assistant (Claude, ChatGPT, Gemini, DeepSeek, …) is working**.
 - **Click-through** on empty areas — it won't block the app behind it
 - **Drag** to reposition anywhere — **position is remembered** across restarts
 - **Resize** — scroll over the pet (or use the tray) to scale it 0.6×–2.5×, **size is remembered**
-- **Click/poke** reactions
+- **Click/poke** reactions — keep petting and it warms up, showering hearts
+- **Eyes follow your cursor** while idle, so it feels like it's watching you
+- **Decorations**: a little leaf sprout on its head + ambient sparkles
 - **Speech bubbles**
-- **Idle behaviors**: blinking, little hops, falls asleep when ignored
+- **Idle behaviors**: blinking, little hops, sparkles, falls asleep when ignored
 - **Per-AI tint + badges** — a colored glow and badges show which assistant is driving it
 - **Multi-AI mode** — if Claude, ChatGPT, Gemini, etc. are active together, the pet switches into a team-up bounce
 - **Sound chimes** on done/error (toggle from the tray)
@@ -65,6 +67,7 @@ curl -s localhost:7337/state \
 | `ttl`      | optional ms, then the pet returns to idle automatically            |
 | `link`     | optional URL opened when the bubble (or pet) is clicked; safe schemes only (`http` `https` `vscode` `vscode-insiders` `cursor` `windsurf`) |
 | `linkText` | optional label for that link (default `Open →`)                     |
+| `attention`| optional bool; `true` marks a confirm/permission prompt so the pet bounces + chimes for you, even when no `link` is provided |
 
 `GET /health` returns `{ ok: true }` so scripts can check the pet is up.
 
@@ -139,13 +142,30 @@ The link is auto-built from the project path and editor:
   `windsurf`). Default: auto-detected from the terminal, falling back to `vscode`.
 - `PET_OPEN_URL` — override the link entirely with a URL of your choice.
 
-If Claude Code is running in a plain terminal (no detectable editor), the prompt
-still shows but without a clickable link.
+If Claude Code is running in a plain terminal (no detectable editor), the pet
+still bounces + chimes and shows the message — just without a clickable link.
 
-### ChatGPT / Gemini / DeepSeek / anything else
+### ChatGPT / Gemini web (automatic, via userscript)
 
-There's no universal hook system for those, so trigger the same endpoint from
-wherever you can:
+There's no hook system for the web UIs, so a small **userscript** infers the
+state from the page (it watches for the "stop generating" button, which only
+exists while the model is streaming) and pings the pet for you.
+
+1. Install [Tampermonkey](https://www.tampermonkey.net/) or
+   [Violentmonkey](https://violentmonkey.github.io/) in your browser.
+2. Create a new script and paste in
+   [hooks/pet-userscript.user.js](hooks/pet-userscript.user.js).
+3. (Only if you launched the pet with `PET_TOKEN`) set the same value in the
+   `TOKEN` constant at the top of the script.
+
+Now ChatGPT and Gemini drive the pet automatically: it shows that AI's tint +
+badge while a response streams and cheers when it's done. The script is scoped
+to `chatgpt.com`, `chat.openai.com`, and `gemini.google.com`. Open both in
+tabs at once and you'll get the multi-AI team-up animation for free.
+
+### Anything else (DeepSeek, APIs, CLIs)
+
+Trigger the same endpoint from wherever you can:
 
 - **API wrappers / your own scripts**: call `localhost:7337/state` before/after
   a request (or use [hooks/pet-notify.js](hooks/pet-notify.js)):
@@ -154,8 +174,6 @@ wherever you can:
   PET_SOURCE=chatgpt node hooks/pet-notify.js happy "got an answer!"
   PET_SOURCE=gemini node hooks/pet-notify.js working "asking Gemini..."
   ```
-- **Browser extension / userscript** (ChatGPT/Gemini web): watch for the
-  "generating" state and `fetch('http://localhost:7337/state', …)`. CORS is open.
 - **CLI tools**: wrap them in a shell function that pings the pet around the call.
 
 ## Project layout
@@ -172,6 +190,7 @@ src/
     pet.js           Behavior: moods, bubbles, idle loop, click/drag, sounds
 hooks/
   pet-notify.js      Sends a mood to the pet (CLI args or hook JSON on stdin)
+  pet-userscript.user.js  Browser userscript: ChatGPT/Gemini web -> pet (auto)
   claude-settings-example.json
 pettest.js           Smoke test for the server + hook script (npm test)
 ```
