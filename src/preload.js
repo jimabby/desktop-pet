@@ -27,5 +27,7 @@ contextBridge.exposeInMainWorld('petAPI', {
   onSettings: (cb) => ipcRenderer.on('settings', (_e, settings) => cb(settings)),
   onFocus: (cb) => ipcRenderer.on('focus', (_e, f) => cb(f)),
   onNotice: (cb) => ipcRenderer.on('notice', (_e, text) => cb(text)),
-  onTrick: (cb) => ipcRenderer.on('pet-trick', (_e, name) => cb(name))
+  onTrick: (cb) => ipcRenderer.on('pet-trick', (_e, name) => cb(name)),
+  onDailyStats: (cb) => ipcRenderer.on('daily-stats', (_e, stats) => cb(stats)),
+  onWeeklyStats: (cb) => ipcRenderer.on('weekly-stats', (_e, stats) => cb(stats))
 });

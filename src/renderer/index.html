@@ -54,10 +54,16 @@
             <div class="blush left"></div>
             <div class="blush right"></div>
           </div>
+          <!-- pulsing ring around the pet body while an AI is working/thinking -->
+          <div class="ai-ring" aria-hidden="true"></div>
+          <!-- focus-mode headphones — independent of the cosmetic system -->
+          <div class="focus-phones" aria-hidden="true"><span class="cup left"></span><span class="cup right"></span></div>
           <!-- little arms that wave while working / being petted -->
           <div class="arm left" aria-hidden="true"></div>
           <div class="arm right" aria-hidden="true"></div>
           <div class="zzz">z<span>z</span><span>z</span></div>
+          <!-- cozy sleeping blanket — only visible in mood-sleeping -->
+          <div class="blanket" aria-hidden="true"><span class="blanket-fold"></span></div>
         </div>
       </div>
 
@@ -66,6 +72,11 @@
       <div id="ctx-bar" class="ctx-bar hidden" aria-hidden="true">
         <div class="ctx-bar-track"><div class="ctx-bar-fill"></div></div>
         <span id="ctx-bar-label" class="ctx-bar-label hidden"></span>
+      </div>
+
+      <!-- daily activity summary: tasks done + errors today (hidden until > 0) -->
+      <div id="daily-bar" class="daily-bar hidden" aria-hidden="true">
+        <span id="daily-count"></span>
       </div>
     </div>
 

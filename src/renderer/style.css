@@ -200,7 +200,6 @@ body {
   transition: opacity 0.4s ease;
 }
 .ctx-bar.hidden { display: none; }
-.ctx-bar.dim { opacity: 0.4; }
 .ctx-bar-track {
   flex: 1;
   height: 6px;
@@ -222,6 +221,22 @@ body {
   white-space: nowrap;
 }
 .ctx-bar-label.hidden { display: none; }
+
+/* ---------- Daily activity bar ---------- */
+/* Shows "✓ N today" (and "⚠ M" if errors) once at least one task is done. */
+.daily-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #59c98a;
+  white-space: nowrap;
+  opacity: 0.8;
+  letter-spacing: 0.02em;
+}
+.daily-bar.hidden { display: none; }
 
 .body {
   position: absolute;
@@ -523,10 +538,11 @@ body {
   transform: translateX(-50%);
   animation: particle-float 1100ms ease-out forwards;
 }
-.particle.heart { color: #ff6b8a; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.18); }
+.particle.heart   { color: #ff6b8a; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.18); }
 .particle.sparkle { color: #ffe27a; text-shadow: 0 0 7px rgba(255, 226, 122, 0.85); }
-.particle.star { font-size: 15px; text-shadow: 0 0 8px rgba(255, 226, 122, 0.7); }
-.particle.note { color: #8f6fff; text-shadow: 0 1px 4px rgba(143, 111, 255, 0.5); }
+.particle.star    { font-size: 15px; text-shadow: 0 0 8px rgba(255, 226, 122, 0.7); }
+.particle.note    { color: #8f6fff; text-shadow: 0 1px 4px rgba(143, 111, 255, 0.5); }
+.particle.flower  { color: #ff8fc4; text-shadow: 0 0 8px rgba(255, 143, 196, 0.7); }
 @keyframes particle-float {
   0%   { opacity: 0; transform: translate(-50%, 0) scale(0.4) rotate(0deg); }
   20%  { opacity: 1; }
@@ -635,10 +651,15 @@ body {
   top: 60px;
 }
 
-/* sleeping: flat, slow, Zzz */
+/* sleeping: flat, slow, Zzz, cozy quilt covers everything below the head top */
 .mood-sleeping .body { animation: sleep-breathe 3.6s ease-in-out infinite; }
 .mood-sleeping .eye { height: 3px; margin-top: 8px; }
 .mood-sleeping .zzz { animation: float-z 2.4s ease-in-out infinite; }
+/* hide decorations / face elements — just body silhouette + quilt */
+.mood-sleeping .sprout     { display: none; }
+.mood-sleeping .blush      { display: none; }
+.mood-sleeping .foot       { opacity: 0; }
+.mood-sleeping .blanket-fold { display: none; }  /* user: delete cover above quilt */
 
 /* ============ PER-SOURCE TINT ============ */
 /* A subtle glow ring keyed off the AI that's driving the pet. Layered on top
@@ -708,8 +729,9 @@ body {
   50%      { width: 86px; opacity: 0.28; }
 }
 @keyframes sleep-breathe {
-  0%, 100% { transform: translateX(-50%) scaleY(0.9) scaleX(1.05); }
-  50%      { transform: translateX(-50%) scaleY(0.86) scaleX(1.08); }
+  /* squish more than idle so the pet reads as "melted" / fully at rest */
+  0%, 100% { transform: translateX(-50%) scaleY(0.82) scaleX(1.14); }
+  50%      { transform: translateX(-50%) scaleY(0.78) scaleX(1.17); }
 }
 @keyframes think-squish {
   0%, 100% { transform: translateX(-50%) scaleY(1) scaleX(1); }
@@ -1069,6 +1091,160 @@ body {
   to   { filter: hue-rotate(360deg) saturate(1.5); }
 }
 
+/* ============ AI ACTIVITY RING ============ */
+/* A real DOM element (.ai-ring) at z-index 4 so it sits above the opaque body.
+   Transparent center + border = oval outline around the body.
+   Body is 100×88px at bottom:0 of the 110×110 #pet.
+   Ring is 118×104px centered on the body: bottom = -(104/2 - 88/2) = -8px.
+   clip-path shows only the bottom ~35% so it reads as a ground glow around the feet
+   rather than a full ring encircling the whole character. */
+.ai-ring {
+  display: none;
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  width: 118px;
+  height: 104px;
+  transform: translateX(-50%);
+  border-radius: 52% 52% 46% 46% / 58% 58% 42% 42%;
+  border: 2.5px solid rgba(143, 210, 255, 0.65);
+  background: transparent;
+  pointer-events: none;
+  z-index: 4;
+  clip-path: inset(82% 0 0 0);
+}
+/* ring only on thinking (reacting to AI); focus/working shows headphones instead */
+.mood-thinking .ai-ring {
+  display: block;
+  animation: ai-ring-pulse 1.8s ease-in-out infinite;
+}
+/* hide ring when focus mode is active (headphones take over) */
+.focusing .ai-ring { display: none; }
+/* Tint ring to match each known source */
+.source-claude   .ai-ring { border-color: rgba(217, 119, 87,  0.65); }
+.source-chatgpt  .ai-ring { border-color: rgba(16,  163, 127, 0.65); }
+.source-gemini   .ai-ring { border-color: rgba(66,  133, 244, 0.65); }
+.source-deepseek .ai-ring { border-color: rgba(125, 95,  255, 0.65); }
+.source-copilot  .ai-ring { border-color: rgba(110, 64,  201, 0.65); }
+@keyframes ai-ring-pulse {
+  0%, 100% { transform: translateX(-50%) scale(1);    opacity: 0.85; }
+  50%      { transform: translateX(-50%) scale(1.11); opacity: 0.25; }
+}
+
+/* ============ SLEEPING BLANKET ============ */
+/* A quilted teal blanket that slides up to cover the lower body while sleeping.
+   Width slightly wider than the body (100px) to look tucked-in on both sides.  */
+.blanket {
+  display: none;
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  width: 122px;
+  height: 64px;  /* covers face: 64 - 6 = 58px up body, eyes at 54px from bottom */
+  transform: translateX(-50%);
+  /* diagonal stripe quilt texture over the base teal */
+  background:
+    repeating-linear-gradient(
+      -48deg,
+      rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 8px,
+      transparent 8px, transparent 16px
+    ),
+    repeating-linear-gradient(
+      42deg,
+      rgba(0, 0, 0, 0.04) 0px, rgba(0, 0, 0, 0.04) 8px,
+      transparent 8px, transparent 16px
+    ),
+    linear-gradient(175deg, #74e9d6 0%, #38c7b2 48%, #23a898 100%);
+  border-radius: 46% 46% 24% 24% / 56% 56% 34% 34%;
+  z-index: 3;
+  box-shadow:
+    inset 0 10px 0 rgba(255, 255, 255, 0.24),   /* soft puff highlight */
+    inset 0 -4px 0 rgba(0, 0, 0, 0.12),
+    inset 14px 0 0 rgba(255, 255, 255, 0.06),
+    inset -14px 0 0 rgba(255, 255, 255, 0.06),
+    0 6px 18px rgba(0, 0, 0, 0.18);
+}
+/* Turn-down fold at the top of the blanket — lighter, puffier strip */
+.blanket-fold {
+  display: block;
+  position: absolute;
+  top: -13px;
+  left: 5%;
+  right: 5%;
+  height: 16px;
+  background: linear-gradient(180deg, #b2f4ea 0%, #62dece 55%, #3ec9b6 100%);
+  border-radius: 50% 50% 28% 28% / 80% 80% 20% 20%;
+  box-shadow:
+    inset 0 4px 0 rgba(255, 255, 255, 0.35),
+    0 3px 6px rgba(0, 0, 0, 0.13);
+}
+.mood-sleeping .blanket {
+  display: block;
+  animation: blanket-rise 0.6s cubic-bezier(0.18, 1.4, 0.4, 1) both;
+}
+@keyframes blanket-rise {
+  from { transform: translateX(-50%) translateY(24px); opacity: 0; }
+  to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
+}
+
+/* ============ FOCUS MODE — HEADPHONES ============ */
+/* top:16px so the headband arcs over the crown; cups at top:34px land at
+   ear/eye level on the sides of the blob. */
+.focus-phones {
+  display: none;
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  width: 80px;
+  height: 57px;
+  transform: translateX(-50%);
+  z-index: 3;
+  pointer-events: none;
+}
+/* headband arc arcs over the crown of the head */
+.focus-phones::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 72px;
+  height: 34px;
+  transform: translateX(-50%);
+  border: 5px solid #33384a;
+  border-bottom: 0;
+  border-radius: 36px 36px 0 0;
+}
+.focus-phones .cup {
+  position: absolute;
+  top: 34px;
+  width: 13px;
+  height: 19px;
+  background: linear-gradient(160deg, #7d6bff, #5a52e0);
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 2px #33384a;
+}
+.focus-phones .cup.left  { left: -2px; }
+.focus-phones .cup.right { right: -2px; }
+.focusing .focus-phones {
+  display: block;
+}
+/* cups pulse gently to the beat */
+.focusing .focus-phones .cup {
+  animation: focus-cup-beat 1.4s ease-in-out infinite;
+}
+.focusing .focus-phones .cup.right { animation-delay: 0.7s; }
+@keyframes focus-cup-beat {
+  0%, 100% { transform: scaleY(1);    background: linear-gradient(160deg, #7d6bff, #5a52e0); }
+  50%       { transform: scaleY(1.1); background: linear-gradient(160deg, #9d8bff, #7a72f0); }
+}
+
+/* ============ TASK COMPLETE — ENHANCED HAPPY ============ */
+/* Slightly bigger mouth smile and brighter bloom on big celebrations */
+#pet.big-celebrate .sprout .petal {
+  transform: rotate(var(--a)) translateY(-7px) scale(1.2) !important;
+  opacity: 1 !important;
+}
+
 /* ---------- Respect reduced-motion ---------- */
 /* Users who ask the OS to minimize motion get a calm pet: no looping bounces,
    sways, or drifts. One-shot reactions (pop, blink) are left intact. */
@@ -1079,7 +1255,9 @@ body {
   .source-many.mood-working, .ai-badge, #pet.attention,
   #pet.attention::before, .mood-stressed, .mood-stressed .body,
   .scarf .tail, #pet.rainbow .body, .bunny-ear, .bunny-ear.left,
-  .bunny-ear.right {
+  .bunny-ear.right,
+  .mood-thinking .ai-ring,
+  .mood-sleeping .blanket, .focusing .focus-phones .cup {
     animation: none !important;
   }
 }

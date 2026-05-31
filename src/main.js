@@ -214,9 +214,11 @@ function createWindow() {
     // (hit-testing stays correct because this is a real layout zoom).
     win.webContents.setZoomFactor(scale);
     pushSettings();
-    // A little wave hello once the pet has settled in on screen.
+    pushDailyStats();
+    pushWeeklyStats();
     if (!store.get('hidden')) {
       setTimeout(() => win && win.webContents.send('pet-trick', 'wave'), 700);
+      sendMorningGreeting();
     }
   });
 }
@@ -255,6 +257,53 @@ function pushSettings() {
   });
 }
 
+// Push today's aggregate task/error/confirm counts to the renderer so it can
+// show a compact "N tasks today" line below the pet.
+function pushDailyStats() {
+  if (!win || win.isDestroyed()) return;
+  const s = getStats();
+  let tasks = 0, confirms = 0, errors = 0;
+  for (const a of Object.values(s.perAi || {})) {
+    tasks += a.tasks || 0;
+    confirms += a.confirms || 0;
+    errors += a.errors || 0;
+  }
+  win.webContents.send('daily-stats', { tasks, confirms, errors });
+}
+
+// Show a greeting bubble once per calendar day. If yesterday had tasks, the
+// pet mentions them; otherwise it just says good morning/afternoon/evening.
+function sendMorningGreeting() {
+  const today = todayStr();
+  if (store.get('lastGreetDate') === today) return;
+  store.set('lastGreetDate', today);
+
+  const s = store.get('stats');
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yStr = yesterday.toLocaleDateString('en-CA');
+
+  let msg;
+  if (s && s.date === yStr) {
+    let total = 0;
+    for (const a of Object.values(s.perAi || {})) total += a.tasks || 0;
+    if (total > 0) {
+      msg = `good morning! ${total} task${total > 1 ? 's' : ''} done yesterday 🌟`;
+    }
+  }
+  if (!msg) {
+    const h = new Date().getHours();
+    if (h < 12) msg = 'good morning! 🌅';
+    else if (h < 17) msg = 'good afternoon! ☀️';
+    else msg = 'good evening! 🌙';
+  }
+
+  // Fire after the wave-hello trick (700ms) has finished playing (~1.7s).
+  setTimeout(() => {
+    if (win && !win.isDestroyed()) win.webContents.send('notice', msg);
+  }, 2500);
+}
+
 // ---------------------------------------------------------------------------
 // Daily activity stats (shown in the tray's "Today" submenu)
 // ---------------------------------------------------------------------------
@@ -267,6 +316,48 @@ function getStats() {
   const s = store.get('stats');
   if (s && s.date === todayStr() && s.perAi) return s;
   return { date: todayStr(), perAi: {} };
+}
+
+// ---------------------------------------------------------------------------
+// Weekly usage — rolling 7-day history of completed tasks + active time.
+// Stored as an array of {date, tasks, activeMs} in the 'weekHistory' key.
+// ---------------------------------------------------------------------------
+function getWeekHistory() {
+  const history = store.get('weekHistory') || [];
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 7);
+  const cutoffStr = cutoff.toLocaleDateString('en-CA');
+  return history.filter((d) => d.date >= cutoffStr);
+}
+
+function refreshWeekHistory() {
+  const today = todayStr();
+  const s = getStats();
+  let tasks = 0, activeMs = 0;
+  for (const a of Object.values(s.perAi || {})) {
+    tasks += a.tasks || 0;
+    activeMs += a.activeMs || 0;
+  }
+  const history = getWeekHistory();
+  const idx = history.findIndex((d) => d.date === today);
+  if (idx >= 0) {
+    history[idx] = { date: today, tasks, activeMs };
+  } else {
+    history.push({ date: today, tasks, activeMs });
+  }
+  store.set('weekHistory', history);
+}
+
+function weeklyTotals() {
+  return getWeekHistory().reduce(
+    (acc, d) => ({ tasks: acc.tasks + (d.tasks || 0), activeMs: acc.activeMs + (d.activeMs || 0) }),
+    { tasks: 0, activeMs: 0 }
+  );
+}
+
+function pushWeeklyStats() {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.send('weekly-stats', weeklyTotals());
 }
 
 // Fold one incoming AI state into the running daily tally.
@@ -286,6 +377,7 @@ function recordStat(state) {
     if (a.lastBusyAt && now - a.lastBusyAt < 60000) a.activeMs += now - a.lastBusyAt;
     a.lastBusyAt = now;
   }
+  const counted = state.attention || state.mood === 'error' || state.mood === 'happy';
   if (state.attention) a.confirms++;
   if (state.mood === 'error') a.errors++;
   if (state.mood === 'happy') {
@@ -294,6 +386,13 @@ function recordStat(state) {
   }
 
   store.set('stats', s);
+
+  // Push updated counts to the renderer only when a visible number changed.
+  if (counted) {
+    refreshWeekHistory();
+    pushDailyStats();
+    pushWeeklyStats();
+  }
 
   // Feed the missed-event log for the states worth catching up on later.
   if (state.attention) logEvent(src, 'confirm', state.text || 'needs you to confirm');

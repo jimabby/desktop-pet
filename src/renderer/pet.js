@@ -9,8 +9,14 @@ const aiBadges = document.getElementById('ai-badges');
 const particles = document.getElementById('particles');
 const ctxBar = document.getElementById('ctx-bar');
 const ctxBarLabel = document.getElementById('ctx-bar-label');
+const dailyBar = document.getElementById('daily-bar');
+const dailyCount = document.getElementById('daily-count');
 const body = document.querySelector('.body');
 const pupils = document.querySelectorAll('.pupil');
+const focusPhonesEl = document.querySelector('.focus-phones');
+
+let storedDailyStats = null;
+let storedWeeklyStats = null;
 
 const MOODS = ['idle', 'thinking', 'working', 'happy', 'stressed', 'sleeping', 'error'];
 const MOOD_PRIORITY = {
@@ -26,6 +32,7 @@ const MOOD_PRIORITY = {
 let currentMood = 'idle';
 let currentSource = '';
 let lastInteraction = Date.now();
+let lastActiveClear = 0; // when activeAis last transitioned from non-empty to empty
 let bubbleTimer = null;
 let happyResetTimer = null;
 let attentionTimer = null;
@@ -73,6 +80,47 @@ window.petAPI.onSettings((s) => {
 });
 
 // ---------------------------------------------------------------------------
+// Daily + weekly activity bar — hidden when idle; shows task counts when an
+// AI is active. Weekly total comes from a rolling 7-day store in main.
+// ---------------------------------------------------------------------------
+function updateActivityBar() {
+  if (activeAis.size === 0) {
+    dailyBar.classList.add('hidden');
+    return;
+  }
+  const today = storedDailyStats;
+  const weekly = storedWeeklyStats;
+  const todayTasks = today ? today.tasks : 0;
+  const weekTasks = weekly ? weekly.tasks : 0;
+
+  if (todayTasks <= 0 && weekTasks <= 0) {
+    dailyBar.classList.add('hidden');
+    return;
+  }
+
+  let text = '';
+  if (todayTasks > 0) {
+    text = `✓ ${todayTasks} today`;
+    if (today.errors) text += `  ⚠ ${today.errors}`;
+  }
+  if (weekTasks > todayTasks) {
+    text += text ? `  ·  ${weekTasks} this week` : `${weekTasks} this week`;
+  }
+  dailyCount.textContent = text;
+  dailyBar.classList.remove('hidden');
+}
+
+window.petAPI.onDailyStats((stats) => {
+  storedDailyStats = stats;
+  updateActivityBar();
+});
+
+window.petAPI.onWeeklyStats((stats) => {
+  storedWeeklyStats = stats;
+  updateActivityBar();
+});
+
+// ---------------------------------------------------------------------------
 // Context-usage slider — a thin bar below the pet that fills as the
 // conversation's context window fills up. Token counts arrive on each AI
 // state as `ctx`.
@@ -87,7 +135,8 @@ function ringColor(pct) {
 }
 
 function updateCtxRing() {
-  if (lastCtx <= 0) {
+  // Only show while an AI is actively working — hide completely when idle
+  if (lastCtx <= 0 || activeAis.size === 0) {
     ctxBar.classList.add('hidden');
     ctxBarLabel.classList.add('hidden');
     return;
@@ -97,17 +146,11 @@ function updateCtxRing() {
   ctxBar.style.setProperty('--pct', pct.toFixed(1));
   ctxBar.style.setProperty('--ring-color', color);
   ctxBar.classList.remove('hidden');
-  // dim it when no AI is actively working, so an idle pet stays uncluttered
-  ctxBar.classList.toggle('dim', activeAis.size === 0);
 
-  // Compact token label, shown once usage is meaningful.
-  if (pct >= 25) {
-    ctxBarLabel.textContent = `${Math.round(lastCtx / 1000)}k`;
-    ctxBarLabel.style.setProperty('--label-color', color);
-    ctxBarLabel.classList.remove('hidden');
-  } else {
-    ctxBarLabel.classList.add('hidden');
-  }
+  // Always show the token label so you can see the session size at a glance
+  ctxBarLabel.textContent = `${Math.round(lastCtx / 1000)}k`;
+  ctxBarLabel.style.setProperty('--label-color', color);
+  ctxBarLabel.classList.remove('hidden');
 }
 
 // ---------------------------------------------------------------------------
@@ -210,7 +253,8 @@ const HEART_GLYPHS = ['♥', '❤', '💕'];
 const SPARKLE_GLYPHS = ['✦', '✧', '⋆', '✨'];
 const STAR_GLYPHS = ['⭐', '🌟', '✨'];
 const NOTE_GLYPHS = ['♪', '♫', '♩', '♬'];
-const GLYPHS = { heart: HEART_GLYPHS, sparkle: SPARKLE_GLYPHS, star: STAR_GLYPHS, note: NOTE_GLYPHS };
+const FLOWER_GLYPHS = ['✿', '❀', '🌸', '🌺'];
+const GLYPHS = { heart: HEART_GLYPHS, sparkle: SPARKLE_GLYPHS, star: STAR_GLYPHS, note: NOTE_GLYPHS, flower: FLOWER_GLYPHS };
 
 function spawnParticle(type) {
   const el = document.createElement('span');
@@ -428,7 +472,9 @@ function removeActiveAi(source) {
 function renderFromActiveAis() {
   renderBadges();
   updateCtxRing();
+  updateActivityBar();
   if (activeAis.size === 0) {
+    lastActiveClear = Date.now(); // sleep timer starts from here, not last hook event
     setSource('');
     setMood('idle');
     return;
@@ -495,6 +541,16 @@ window.petAPI.onAiState((state) => {
     }
     activeAis.set(source, active);
     renderFromActiveAis();
+
+    // Big task-done celebration: flowers + stars when an AI finishes a real task.
+    if (mood === 'happy' && previous && BUSY_MOODS.has(previous.mood)) {
+      pet.classList.add('big-celebrate');
+      burst('flower', 4);
+      burst('star', 4);
+      setTimeout(() => burst('sparkle', 6), 180);
+      setTimeout(() => burst('flower', 2), 400);
+      setTimeout(() => pet.classList.remove('big-celebrate'), 800);
+    }
   }
 
   if (state.attention || state.link) {
@@ -534,24 +590,45 @@ window.petAPI.onNotice((text) => {
 // changes. The pet cheers at the start of a work block and naps on breaks.
 // ---------------------------------------------------------------------------
 let focusPhase = null; // 'work' | 'break' | null
+let focusNoteTimer = null;
+
+function startFocusNotes() {
+  clearInterval(focusNoteTimer);
+  // Spawn a floating music note every ~2.8s while in focus work mode.
+  focusNoteTimer = setInterval(() => {
+    if (focusPhase === 'work') spawnParticle('note');
+  }, 2800);
+}
+function stopFocusNotes() {
+  clearInterval(focusNoteTimer);
+  focusNoteTimer = null;
+}
+
 window.petAPI.onFocus((f) => {
   focusPhase = f && f.phase ? f.phase : null;
   lastInteraction = Date.now();
   if (focusPhase === 'work') {
     pet.classList.add('focusing');
+    if (focusPhonesEl) focusPhonesEl.style.display = 'block';
     setSource('');
     setMood('happy', { silent: true });
     say(`focus time! ${f.minutes || 25}m 💪`, 3000);
+    burst('note', 3);
+    startFocusNotes();
     clearTimeout(happyResetTimer);
     happyResetTimer = setTimeout(() => {
       if (activeAis.size) renderFromActiveAis();
       else setMood('idle');
     }, 1500);
   } else if (focusPhase === 'break') {
+    stopFocusNotes();
+    if (focusPhonesEl) focusPhonesEl.style.display = '';
     pet.classList.remove('focusing');
     setMood('sleeping');
     say(`break — back in ${f.minutes || 5}m 😴`, 4000);
   } else {
+    stopFocusNotes();
+    if (focusPhonesEl) focusPhonesEl.style.display = '';
     pet.classList.remove('focusing');
     say('focus done — nice work! 🎉', 3000);
     if (activeAis.size) renderFromActiveAis();
@@ -911,7 +988,11 @@ setInterval(() => {
   // During a focus work block the pet stays awake and attentive; on a break it
   // is already napping and shouldn't be nudged out of it by idle actions.
   if (focusPhase) return;
-  const idleFor = Date.now() - lastInteraction;
+  // Use whichever is more recent: last user/AI event, or when the active AI
+  // cleared. Without lastActiveClear, the pet can sleep immediately after a
+  // TTL fires (TTL=45s > SLEEP_AFTER_MS=30s, so 45s since last hook event
+  // looks like "already been idle too long" even mid-task).
+  const idleFor = Date.now() - Math.max(lastInteraction, lastActiveClear);
 
   if (idleFor > SLEEP_AFTER_MS) {
     if (currentMood !== 'sleeping') {
