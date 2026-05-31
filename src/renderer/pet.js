@@ -604,12 +604,16 @@ function stopFocusNotes() {
   focusNoteTimer = null;
 }
 
+function showFocusPhones(show) {
+  if (focusPhonesEl) focusPhonesEl.classList.toggle('active', show);
+}
+
 window.petAPI.onFocus((f) => {
   focusPhase = f && f.phase ? f.phase : null;
   lastInteraction = Date.now();
   if (focusPhase === 'work') {
     pet.classList.add('focusing');
-    if (focusPhonesEl) focusPhonesEl.style.display = 'block';
+    showFocusPhones(true);
     setSource('');
     setMood('happy', { silent: true });
     say(`focus time! ${f.minutes || 25}m 💪`, 3000);
@@ -622,13 +626,13 @@ window.petAPI.onFocus((f) => {
     }, 1500);
   } else if (focusPhase === 'break') {
     stopFocusNotes();
-    if (focusPhonesEl) focusPhonesEl.style.display = '';
+    showFocusPhones(false);
     pet.classList.remove('focusing');
     setMood('sleeping');
     say(`break — back in ${f.minutes || 5}m 😴`, 4000);
   } else {
     stopFocusNotes();
-    if (focusPhonesEl) focusPhonesEl.style.display = '';
+    showFocusPhones(false);
     pet.classList.remove('focusing');
     say('focus done — nice work! 🎉', 3000);
     if (activeAis.size) renderFromActiveAis();

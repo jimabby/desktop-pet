@@ -24,7 +24,7 @@ const PALETTE = {
 const SKINS = ['slime', 'cat', 'ghost', 'bunny'];
 
 // Cosmetics and the lifetime-task count needed to unlock each. 'none' is free.
-const COSMETIC_UNLOCKS = { none: 0, glasses: 10, scarf: 40, headphones: 75, crown: 120 };
+const COSMETIC_UNLOCKS = { none: 0, glasses: 10, headphones: 30, scarf: 50, crown: 120 };
 
 let win = null;
 let tray = null;
