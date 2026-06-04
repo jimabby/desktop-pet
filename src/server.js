@@ -28,6 +28,18 @@ const http = require('http');
  * require a matching `X-Pet-Token` header. This stops random web pages you visit
  * from puppeting the pet via the open CORS policy. /health stays public.
  */
+// Schemes we're willing to open from a (potentially un-tokened) network call.
+// Keeps a random web page from POSTing e.g. a file:// link the pet would open.
+// Exported so main.js can reuse the same list for the IPC open-link handler.
+const ALLOWED_LINK_SCHEMES = new Set([
+  'http:',
+  'https:',
+  'vscode:',
+  'vscode-insiders:',
+  'cursor:',
+  'windsurf:'
+]);
+
 function startControlServer(port, onState, opts = {}) {
   // Token may be supplied live (e.g. from the GUI-editable store) so changing it
   // takes effect without a restart; falls back to the PET_TOKEN env var.
@@ -35,16 +47,6 @@ function startControlServer(port, onState, opts = {}) {
     typeof opts.getToken === 'function'
       ? opts.getToken
       : () => process.env.PET_TOKEN || '';
-  // Schemes we're willing to open from a (potentially un-tokened) network call.
-  // Keeps a random web page from POSTing e.g. a file:// link the pet would open.
-  const ALLOWED_LINK_SCHEMES = new Set([
-    'http:',
-    'https:',
-    'vscode:',
-    'vscode-insiders:',
-    'cursor:',
-    'windsurf:'
-  ]);
 
   function safeLink(raw) {
     if (typeof raw !== 'string' || !raw) return '';
@@ -145,4 +147,4 @@ function startControlServer(port, onState, opts = {}) {
   return server;
 }
 
-module.exports = { startControlServer };
+module.exports = { startControlServer, ALLOWED_LINK_SCHEMES };

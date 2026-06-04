@@ -4,7 +4,7 @@ const {
   app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, shell, globalShortcut
 } = require('electron');
 const path = require('path');
-const { startControlServer } = require('./server');
+const { startControlServer, ALLOWED_LINK_SCHEMES } = require('./server');
 const { createStore } = require('./store');
 
 const PET_PORT = Number(process.env.PET_PORT) || 7337;
@@ -143,14 +143,15 @@ function maybeWander() {
   const [x, y] = win.getPosition();
   const [w, h] = win.getSize();
   const dx = (Math.random() < 0.5 ? -1 : 1) * (24 + Math.random() * 56);
-  const target = clampToScreen(Math.round(x + dx), y, w, h);
-  if (target.x === x) return;
+  const dy = (Math.random() < 0.5 ? -1 : 1) * (12 + Math.random() * 28);
+  const target = clampToScreen(Math.round(x + dx), Math.round(y + dy), w, h);
+  if (target.x === x && target.y === y) return;
   animateWindowTo(target.x, target.y, 900, savePosition);
 }
 
 function defaultPosition() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  return { x: width - WIN_W - 40, y: height - WIN_H - 20 };
+  return { x: Math.round(width * 0.65), y: Math.round(height * 0.4) };
 }
 
 // Keep the window on a visible display (handles unplugged monitors / changed resolutions).
@@ -609,14 +610,6 @@ ipcMain.on('resize-step', (_e, direction) => {
 // ---------------------------------------------------------------------------
 // IPC: open a link from the bubble (e.g. "jump back to the editor to confirm")
 // ---------------------------------------------------------------------------
-const ALLOWED_LINK_SCHEMES = new Set([
-  'http:',
-  'https:',
-  'vscode:',
-  'vscode-insiders:',
-  'cursor:',
-  'windsurf:'
-]);
 ipcMain.on('open-link', (_e, url) => {
   if (typeof url !== 'string') return;
   try {
@@ -651,14 +644,14 @@ ipcMain.on('drag-end', () => {
 // ---------------------------------------------------------------------------
 function togglePetVisible() {
   if (!win) return;
-  const nowHidden = win.isVisible();
-  if (nowHidden) {
+  const wasVisible = win.isVisible();
+  if (wasVisible) {
     win.hide();
   } else {
     win.show();
     win.webContents.send('pet-trick', 'wave'); // a little hello when it reappears
   }
-  store.set('hidden', nowHidden);
+  store.set('hidden', wasVisible);
   buildTrayMenu();
 }
 

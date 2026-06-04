@@ -652,6 +652,7 @@ body {
 }
 
 /* sleeping: flat, slow, Zzz, cozy quilt covers everything below the head top */
+.mood-sleeping { animation: sleep-float 5s ease-in-out infinite; }
 .mood-sleeping .body { animation: sleep-breathe 3.6s ease-in-out infinite; }
 .mood-sleeping .eye { height: 3px; margin-top: 8px; }
 .mood-sleeping .zzz { animation: float-z 2.4s ease-in-out infinite; }
@@ -659,7 +660,7 @@ body {
 .mood-sleeping .sprout     { display: none; }
 .mood-sleeping .blush      { display: none; }
 .mood-sleeping .foot       { opacity: 0; }
-.mood-sleeping .blanket-fold { display: none; }  /* user: delete cover above quilt */
+.mood-sleeping .blanket-fold { display: none; }
 
 /* ============ PER-SOURCE TINT ============ */
 /* A subtle glow ring keyed off the AI that's driving the pet. Layered on top
@@ -732,6 +733,10 @@ body {
   /* squish more than idle so the pet reads as "melted" / fully at rest */
   0%, 100% { transform: translateX(-50%) scaleY(0.82) scaleX(1.14); }
   50%      { transform: translateX(-50%) scaleY(0.78) scaleX(1.17); }
+}
+@keyframes sleep-float {
+  0%, 100% { transform: translateY(0px); }
+  50%      { transform: translateY(-8px); }
 }
 @keyframes think-squish {
   0%, 100% { transform: translateX(-50%) scaleY(1) scaleX(1); }
