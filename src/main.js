@@ -461,8 +461,9 @@ function bumpLifetime() {
 }
 
 // A transient celebratory bubble that doesn't disturb the active-AI mood state.
+// Fires from the async HTTP path (bumpLifetime), so guard against teardown.
 function notice(text) {
-  if (win) win.webContents.send('notice', text);
+  if (win && !win.isDestroyed()) win.webContents.send('notice', text);
 }
 
 function fmtDur(ms) {
@@ -620,6 +621,11 @@ ipcMain.on('open-link', (_e, url) => {
 });
 
 ipcMain.on('drag-end', () => {
+  // The renderer sends drag-end on every mouseup (it listens on window), so a
+  // right-click release or a mouseup that never started a drag lands here too.
+  // Without a matching drag-start there is nothing to finish — and treating it
+  // as a click would fire a phantom poke (e.g. while opening Settings).
+  if (!isDragging) return;
   clearInterval(dragTimer);
   dragTimer = null;
   isDragging = false;
@@ -933,10 +939,16 @@ function buildTrayMenu() {
 }
 
 function createTray() {
-  // A tiny green blob icon, built inline so we need no asset files.
+  // A tiny green blob icon (with eyes), built inline so we need no asset files.
+  // 16px for standard displays plus a 32px @2x representation for retina.
   const icon = nativeImage.createFromDataURL(
-    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAVUlEQVR42mNgGAWjYBSMglEwCkbBKBgFo2AUjIJRMApGwSgYBaNgFIyCUTAKRsEoGAWjYBSMglEwCkbBKBgFo2AUjIJRMApGwSgYBaNgFIwCAJ4kAAGS0aS3AAAAAElFTkSuQmCC'
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAtElEQVR42mNgGAVYQcGD6Seg+D8Ug/lEac65N+U/PoxTY+adSScy70z6D8IgAGPjEMN0Teqt/v8gjAzwiaFoTrrZeyLpZi9ckba21X90gCwGUgvSAzcg7nr3ibjr3f9BGBngEwPpgRsQdbXjRNTVjv8wDALIfBxiqOEQfrntPykYIxCDL7acCL7Y8p9IjD1NBJxvPBFwvvE/AYw/QfmcrT/hc7b+Pw58gqQk7Xm65gQI41MDAPeMaajVesAbAAAAAElFTkSuQmCC'
   );
+  icon.addRepresentation({
+    scaleFactor: 2,
+    dataURL:
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABVUlEQVR42u2WW2oCMRSG3Y876A4sRRQRUUREEVGKdAGlVfGKN9RKt3SgrffbeKndyREHR8KQqGcmeSjMD9/L5M/ke0qOy+XEiRMnhLz8fQIDmrisST84dxhA7jBAIvZFnn8/4AxaRN9v6fDsvg/ZfR8lQZPI7HqQ2fVQMvdJpLddSG+7aOYU3ndi97ZEatOB1KaDBryw68TudYGk1oak1kYWXswdYlcskdBakNBaaMDG7X7QMcL2iF2xQHzdhPi6iSy8n5o7xK5YILZqQGzVQBZezB1iVywQXdYhuqwjj1NEa8SuWCCyqEFkUUPFiAXC8yqE51VUjFggNKtAaFZBxVy/C4LTMgSnZVTE7ZswMClBYFJCRdz3HvjHRfCPiygZ2ovoGxXANyqgJKzNBN5hHrzDPNrE3mT09PMOZ5CIvk/aXPj4/QYMKODSUT4he75egeXfjvpHnqBF6IJZYSAAAAAASUVORK5CYII='
+  });
   tray = new Tray(icon);
   tray.setToolTip(store.get('name') ? `${store.get('name')} — Desktop Pet` : 'Desktop Pet');
   buildTrayMenu();
@@ -953,6 +965,9 @@ if (!app.requestSingleInstanceLock()) {
     if (win) {
       win.show();
       win.webContents.send('pet-click');
+      // Keep the hidden flag + tray label in sync with the now-visible pet.
+      store.set('hidden', false);
+      if (tray) buildTrayMenu();
     }
   });
 
@@ -969,6 +984,23 @@ if (!app.requestSingleInstanceLock()) {
     createTray();
     registerHotkey();
     scheduleWander();
+
+    // Keep long-running sessions fresh: when the calendar day rolls over, the
+    // renderer's "N today" line and the tray's Today submenu still show
+    // yesterday until the next AI event — refresh them, and greet the new
+    // morning. Also re-render the tray while a focus session is counting down
+    // so its "~Nm — Stop" label stays roughly accurate.
+    let lastSeenDate = todayStr();
+    setInterval(() => {
+      if (focusState && tray) buildTrayMenu();
+      const today = todayStr();
+      if (today === lastSeenDate) return;
+      lastSeenDate = today;
+      pushDailyStats();
+      pushWeeklyStats();
+      if (tray) buildTrayMenu();
+      if (win && !win.isDestroyed() && win.isVisible()) sendMorningGreeting();
+    }, 60000);
 
     // Local control server: any AI / script POSTs a mood here. The auth token is
     // read live from the store so the Settings window can change it on the fly.

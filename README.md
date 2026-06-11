@@ -90,7 +90,7 @@ Open **Settings…** from the tray (or **right-click the pet**). The window cove
 - **Color** — pick a body color from a palette
 - **Skin** — slime, cat, ghost, or bunny
 - **Cosmetic** — equip any headwear you've unlocked (locked ones show how many
-  completed tasks they need: glasses at 10, scarf at 40, headphones at 75, crown
+  completed tasks they need: glasses at 10, headphones at 30, scarf at 50, crown
   at 120)
 - **Behavior** — toggle sound effects, time-of-day tint, wander, and throw physics
 - **Focus** — set the work/break minutes for the Pomodoro timer

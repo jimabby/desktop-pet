@@ -91,18 +91,18 @@ function updateActivityBar() {
   const today = storedDailyStats;
   const weekly = storedWeeklyStats;
   const todayTasks = today ? today.tasks : 0;
+  const todayErrors = today ? today.errors : 0;
   const weekTasks = weekly ? weekly.tasks : 0;
 
-  if (todayTasks <= 0 && weekTasks <= 0) {
+  if (todayTasks <= 0 && todayErrors <= 0 && weekTasks <= 0) {
     dailyBar.classList.add('hidden');
     return;
   }
 
   let text = '';
-  if (todayTasks > 0) {
-    text = `✓ ${todayTasks} today`;
-    if (today.errors) text += `  ⚠ ${today.errors}`;
-  }
+  if (todayTasks > 0) text = `✓ ${todayTasks} today`;
+  // Errors matter even on a day with no completed tasks yet.
+  if (todayErrors > 0) text += (text ? '  ' : '') + `⚠ ${todayErrors}`;
   if (weekTasks > todayTasks) {
     text += text ? `  ·  ${weekTasks} this week` : `${weekTasks} this week`;
   }

@@ -24,6 +24,24 @@ function blobGradient(stops) {
   return `linear-gradient(160deg, ${stops[0]} 0%, ${stops[1]} 100%)`;
 }
 
+// Make a clickable div usable from the keyboard too (Tab + Enter/Space).
+function makePressable(el, onPress, { disabled = false, selected = false } = {}) {
+  el.setAttribute('role', 'button');
+  el.setAttribute('aria-pressed', String(selected));
+  if (disabled) {
+    el.setAttribute('aria-disabled', 'true');
+    return;
+  }
+  el.tabIndex = 0;
+  el.addEventListener('click', onPress);
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onPress();
+    }
+  });
+}
+
 function renderPreview() {
   const stops = palette[selectedColor];
   if (stops) previewBlob.style.background = blobGradient(stops);
@@ -37,12 +55,13 @@ function renderSwatches() {
     sw.className = 'swatch' + (key === selectedColor ? ' selected' : '');
     sw.style.background = blobGradient(stops);
     sw.title = key;
-    sw.addEventListener('click', () => {
+    sw.setAttribute('aria-label', key);
+    makePressable(sw, () => {
       selectedColor = key;
       renderSwatches();
       renderPreview();
       save();
-    });
+    }, { selected: key === selectedColor });
     swatchesEl.appendChild(sw);
   });
 }
@@ -53,11 +72,11 @@ function renderSkins() {
     const chip = document.createElement('div');
     chip.className = 'chip' + (key === selectedSkin ? ' selected' : '');
     chip.textContent = SKIN_LABELS[key] || key;
-    chip.addEventListener('click', () => {
+    makePressable(chip, () => {
       selectedSkin = key;
       renderSkins();
       save();
-    });
+    }, { selected: key === selectedSkin });
     skinsEl.appendChild(chip);
   });
 }
@@ -78,12 +97,11 @@ function renderCosmetics() {
       lock.textContent = `🔒 ${unlocks[key]} tasks`;
       chip.appendChild(lock);
     }
-    chip.addEventListener('click', () => {
-      if (!isUnlocked) return;
+    makePressable(chip, () => {
       selectedCosmetic = key;
       renderCosmetics();
       save();
-    });
+    }, { disabled: !isUnlocked, selected: key === selectedCosmetic });
     cosmeticsEl.appendChild(chip);
   });
   lifetimeEl.textContent = `· ${cfg.lifetimeTasks || 0} done so far`;
