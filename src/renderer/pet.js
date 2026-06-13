@@ -182,6 +182,43 @@ function applyAppearance(a) {
     timeOfDayEnabled = a.timeOfDay;
     applyTimeOfDay();
   }
+  // Optional sprite-sheet art (drop-in replacement for the CSS character).
+  if ('sprite' in a) applySprite(a.sprite);
+}
+
+// ---------------------------------------------------------------------------
+// Optional sprite-sheet art. When a sprite config is supplied, the CSS-drawn
+// character is hidden and a single .sprite layer plays the matching mood row
+// (see the `.sprite` rules in style.css). Absent/invalid config => CSS art.
+//   sprite = { url, cols, rows, fps?, moods: { idle:{row,frames,fps?}, ... } }
+// ---------------------------------------------------------------------------
+let spriteCfg = null;
+function applySprite(sprite) {
+  const rootStyle = document.documentElement.style;
+  if (!sprite || typeof sprite !== 'object' || typeof sprite.url !== 'string' || !sprite.url) {
+    spriteCfg = null;
+    pet.classList.remove('has-sprite');
+    return;
+  }
+  spriteCfg = sprite;
+  // url() value is built here (not user-typed CSS) and the image must be a
+  // same-origin local file under renderer/ — the page CSP blocks remote images.
+  rootStyle.setProperty('--sprite-url', `url("${String(sprite.url).replace(/["\\]/g, '')}")`);
+  rootStyle.setProperty('--sprite-cols', String(Math.max(1, sprite.cols | 0 || 1)));
+  rootStyle.setProperty('--sprite-rows', String(Math.max(1, sprite.rows | 0 || 1)));
+  pet.classList.add('has-sprite');
+  updateSpriteFrame();
+}
+function updateSpriteFrame() {
+  if (!spriteCfg) return;
+  const moods = spriteCfg.moods || {};
+  const m = moods[currentMood] || moods.idle || {};
+  const frames = Math.max(1, m.frames | 0 || 1);
+  const fps = m.fps || spriteCfg.fps || 8;
+  const rootStyle = document.documentElement.style;
+  rootStyle.setProperty('--sprite-row', String(Math.max(0, m.row | 0)));
+  rootStyle.setProperty('--sprite-frames', String(frames));
+  rootStyle.setProperty('--sprite-dur', (frames / fps).toFixed(3) + 's');
 }
 
 // Tint the whole pet warmer/dimmer at night and brighter midday. Implemented as
@@ -286,7 +323,7 @@ function burst(type, count) {
 // cosmetic, focus glow, party hat, carry wobble, or the confirm-nudge bounce.
 const PERSISTENT_FLAGS = [
   'blink', 'attention', 'attention-strong', 'party',
-  'grabbed', 'rainbow', 'focusing', 'bloom'
+  'grabbed', 'rainbow', 'focusing', 'bloom', 'has-sprite'
 ];
 function isPersistentClass(c) {
   return (
@@ -315,6 +352,7 @@ function setMood(mood, { silent = false } = {}) {
   const changed = mood !== currentMood;
   currentMood = mood;
   applyClasses();
+  updateSpriteFrame();
   if (changed && !silent && (mood === 'happy' || mood === 'error')) {
     playSound(mood);
     if (mood === 'happy') burst('sparkle', 3); // a little "done!" celebration

@@ -283,12 +283,59 @@ hooks/
 pettest.js           Smoke test for the server + hook script (npm test)
 ```
 
-## Swapping in real art later
+## Swapping in real art (sprite sheets)
 
-In `style.css` the pet is built from divs. To use sprite sheets instead, replace
-the `.body` / mood classes with `background-image` sprites and step animations,
-keyed off the same `mood-*` classes that `pet.js` already toggles. None of the
-behavior code needs to change.
+The default pet is hand-built from CSS (no image assets — crisp at any size and
+consistent across every mood and skin). When you have real art (e.g. a
+commissioned sprite sheet), there's a **drop-in pipeline** so you don't touch
+any behavior code.
+
+Lay the sheet out as **one row per mood, N frames left-to-right per row**, every
+frame square:
+
+```
+row 0  idle      [f0][f1][f2][f3]
+row 1  thinking  [f0][f1][f2][f3]
+row 2  working   [f0][f1][f2][f3][f4][f5]
+row 3  happy     …
+row 4  stressed  …
+row 5  sleeping  …
+row 6  error     …
+```
+
+Drop the PNG under `src/renderer/` (it must be a **local file** — the page's
+Content-Security-Policy blocks remote images) and add a `sprite` block to the
+app's config file (`pet-config.json` in the app's userData dir):
+
+```json
+{
+  "sprite": {
+    "url": "pet-sprites.png",
+    "cols": 6,
+    "rows": 7,
+    "fps": 8,
+    "moods": {
+      "idle":     { "row": 0, "frames": 4 },
+      "thinking": { "row": 1, "frames": 4 },
+      "working":  { "row": 2, "frames": 6 },
+      "happy":    { "row": 3, "frames": 4 },
+      "stressed": { "row": 4, "frames": 4 },
+      "sleeping": { "row": 5, "frames": 2, "fps": 3 },
+      "error":    { "row": 6, "frames": 4 }
+    }
+  }
+}
+```
+
+- `url` — relative to `src/renderer/` (or any same-origin local path)
+- `cols` / `rows` — the sheet's grid (used to scale each frame to the pet box)
+- `fps` — default animation speed; override per mood with `fps` inside `moods`
+- each mood's `row` (0-based) + `frames` (how many cells that row uses)
+
+When a valid `sprite` is configured the CSS character is hidden and the sheet
+plays the matching mood row; cosmetics, the AI ring, badges, speech bubble, and
+particles still layer on top. Remove the `sprite` block to fall straight back to
+the CSS art. (Reduce-motion pauses the sprite on its first frame.)
 
 ## Packaging (distributables)
 
@@ -303,3 +350,51 @@ npm run dist:linux    # AppImage
 ```
 
 Output lands in `dist/`. The same code produces all three.
+
+### Signing & notarizing the macOS build
+
+Without this, macOS Gatekeeper shows a scary *"app is damaged / from an
+unidentified developer"* warning and users must right-click → Open. A signed +
+notarized `.dmg` opens cleanly. The build is **already configured** for it
+(hardened runtime, `build/entitlements.mac.plist`, `"notarize": true`); you just
+supply the credentials.
+
+**One-time setup:**
+
+1. **Create a *Developer ID Application* certificate** (this is _not_ the same as
+   the "Apple Development" cert Xcode makes by default). In Xcode → Settings →
+   Accounts → your team → **Manage Certificates… → + → Developer ID Application**,
+   or via [developer.apple.com/account/resources/certificates](https://developer.apple.com/account/resources/certificates).
+   Confirm it landed in your keychain:
+
+   ```bash
+   security find-identity -v -p codesigning   # look for "Developer ID Application: …"
+   ```
+
+2. **Make an app-specific password** for notarization at
+   [appleid.apple.com](https://appleid.apple.com) → Sign-In & Security →
+   App-Specific Passwords.
+
+3. **Find your Team ID** at [developer.apple.com/account](https://developer.apple.com/account)
+   (Membership details) — a 10-character string like `AB12CD34EF`.
+
+**Build:** export the three notarization vars and run the mac target. electron-builder
+auto-discovers the Developer ID cert in your keychain and notarizes via `notarytool`:
+
+```bash
+export APPLE_ID="you@example.com"
+export APPLE_APP_SPECIFIC_PASSWORD="abcd-efgh-ijkl-mnop"
+export APPLE_TEAM_ID="AB12CD34EF"
+npm run dist:mac
+```
+
+Notarization adds a few minutes (Apple processes the upload). On success the
+ticket is stapled into the `.dmg` in `dist/`. Verify:
+
+```bash
+spctl -a -vvv -t install "dist/Desktop Pet-0.1.0.dmg"   # → "accepted / source=Notarized Developer ID"
+```
+
+If the cert lives in a `.p12` file instead of the keychain (e.g. CI), point
+electron-builder at it with `CSC_LINK=/path/to/cert.p12` and
+`CSC_KEY_PASSWORD=…` instead of relying on keychain discovery.

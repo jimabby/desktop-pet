@@ -243,8 +243,21 @@ function appearance() {
     colorStops: PALETTE[color] || PALETTE.green,
     skin: SKINS.includes(skin) ? skin : 'slime',
     cosmetic,
-    timeOfDay: store.get('timeOfDay') !== false
+    timeOfDay: store.get('timeOfDay') !== false,
+    // Optional drop-in sprite-sheet art (advanced; edit the config file's
+    // "sprite" key — see "Swapping in real art" in the README). null = CSS art.
+    sprite: spriteConfig()
   };
+}
+
+// A sprite-sheet config from the store, or null. Validated just enough to be
+// safe to hand to the renderer; the renderer clamps the rest.
+function spriteConfig() {
+  const sp = store.get('sprite');
+  if (!sp || typeof sp !== 'object' || typeof sp.url !== 'string' || !sp.url) {
+    return null;
+  }
+  return sp;
 }
 
 // Send the full settings bundle (mute, context-window size, appearance) to the

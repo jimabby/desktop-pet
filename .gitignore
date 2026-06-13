@@ -15,3 +15,6 @@ npm-debug.log*
 
 # Runtime / app config (written to userData, but ignore if it ever lands here)
 pet-config.json
+
+# local tooling / scratch
+.playwright-mcp/

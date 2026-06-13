@@ -33,7 +33,15 @@
       "category": "public.app-category.entertainment",
       "extendInfo": {
         "LSUIElement": 1
-      }
+      },
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": true
+    },
+    "dmg": {
+      "sign": false
     },
     "win": {
       "target": ["nsis"]

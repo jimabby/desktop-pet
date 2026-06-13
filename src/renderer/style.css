@@ -247,8 +247,13 @@ body {
   transform: translateX(-50%);
   background: linear-gradient(160deg, var(--body-1, #7ee8a0) 0%, var(--body-2, #45c97a) 100%);
   border-radius: 50% 50% 46% 46% / 60% 60% 40% 40%;
-  box-shadow: inset -8px -10px 0 rgba(0, 0, 0, 0.08),
-    inset 8px 8px 0 rgba(255, 255, 255, 0.25);
+  /* Soft, layered gel shading: blurred bottom-right occlusion, a broad top-left
+     light, a thin crown rim-light, and a gentle ground shadow for depth. */
+  box-shadow:
+    inset -10px -13px 18px rgba(0, 0, 0, 0.14),
+    inset 11px 13px 22px rgba(255, 255, 255, 0.42),
+    inset 0 6px 7px -2px rgba(255, 255, 255, 0.32),
+    0 7px 15px rgba(0, 0, 0, 0.13);
   z-index: 1;
   animation: breathe 2.8s ease-in-out infinite;
 }
@@ -456,15 +461,63 @@ body {
 /* tuck the arms in while sleeping */
 .mood-sleeping .arm { animation: none; opacity: 0.85; top: 64px; }
 
+/* ---------- Optional sprite-sheet layer ---------- */
+/* Drop-in path for real (e.g. commissioned) art without touching behaviour.
+   Hidden unless JS adds `.has-sprite` to #pet (when a sprite is configured).
+   The sheet is laid out as ONE ROW PER MOOD, N frames left-to-right per row.
+   JS sets these custom properties from the sprite config:
+     --sprite-url     url("…") of the sheet
+     --sprite-cols    frames in the widest row (sheet width  = cols * frame)
+     --sprite-rows    number of mood rows       (sheet height = rows * frame)
+     --sprite-row     0-based row for the current mood
+     --sprite-frames  frames in the current mood's row
+     --sprite-dur     animation duration for the current mood (e.g. 0.6s)
+   Frame size is normalised to the 110px pet box via background-size, so any
+   square sheet resolution works and scales crisply. */
+.sprite { display: none; }
+#pet.has-sprite .sprite {
+  display: block;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 110px;
+  height: 110px;
+  background-image: var(--sprite-url);
+  background-repeat: no-repeat;
+  /* Scale the whole sheet so one frame == the 110px pet box. */
+  background-size: calc(var(--sprite-cols, 1) * 110px) calc(var(--sprite-rows, 1) * 110px);
+  background-position-y: calc(var(--sprite-row, 0) * -110px);
+  image-rendering: -webkit-optimize-contrast; /* crisp scaling for hi-res art */
+  z-index: 1;
+  animation: sprite-play var(--sprite-dur, 0.8s) steps(var(--sprite-frames, 1)) infinite;
+}
+/* When a sprite is active it supplies the whole character, so hide the
+   CSS-drawn body + limbs + skin decorations. App chrome (bubble, ring, badges,
+   particles, cosmetics, Zzz) still layers on top, so accessories keep working. */
+#pet.has-sprite .body,
+#pet.has-sprite .arm,
+#pet.has-sprite .foot,
+#pet.has-sprite .ear,
+#pet.has-sprite .bunny-ear,
+#pet.has-sprite .sprout,
+#pet.has-sprite .blanket { display: none; }
+@keyframes sprite-play {
+  from { background-position-x: 0; }
+  to   { background-position-x: calc(var(--sprite-frames, 1) * -110px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #pet.has-sprite .sprite { animation-play-state: paused; }
+}
+
 /* ---------- Body shine ---------- */
 /* A soft glossy highlight that drifts across the body, giving it a gel look. */
 .shine {
   position: absolute;
-  top: 12px;
-  left: 16px;
-  width: 26px;
-  height: 18px;
-  background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 70%);
+  top: 10px;
+  left: 14px;
+  width: 36px;
+  height: 25px;
+  background: radial-gradient(ellipse at 38% 32%, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0) 72%);
   border-radius: 50%;
   z-index: 2;
   pointer-events: none;
@@ -663,17 +716,19 @@ body {
 .mood-sleeping .blanket-fold { display: none; }
 
 /* ============ PER-SOURCE TINT ============ */
-/* A subtle glow ring keyed off the AI that's driving the pet. Layered on top
-   of the mood background so it reads regardless of mood color. */
-.source-claude   .body { box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.65), 0 0 14px rgba(217, 119, 87, 0.5); }
-.source-chatgpt  .body { box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.65), 0 0 14px rgba(16, 163, 127, 0.5); }
-.source-gemini   .body { box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.65), 0 0 14px rgba(66, 133, 244, 0.5); }
-.source-deepseek .body { box-shadow: 0 0 0 3px rgba(125, 95, 255, 0.65), 0 0 14px rgba(125, 95, 255, 0.5); }
+/* A glow keyed off the AI that's driving the pet. Uses drop-shadow (not
+   box-shadow) so the glow hugs the blob's silhouette AND the body's inset gel
+   shading survives — a box-shadow here would replace that shading and flatten
+   the pet while it works. */
+.source-claude   .body { filter: drop-shadow(0 0 4px rgba(217, 119, 87, 0.9)) drop-shadow(0 0 9px rgba(217, 119, 87, 0.55)); }
+.source-chatgpt  .body { filter: drop-shadow(0 0 4px rgba(16, 163, 127, 0.9)) drop-shadow(0 0 9px rgba(16, 163, 127, 0.55)); }
+.source-gemini   .body { filter: drop-shadow(0 0 4px rgba(66, 133, 244, 0.9)) drop-shadow(0 0 9px rgba(66, 133, 244, 0.55)); }
+.source-deepseek .body { filter: drop-shadow(0 0 4px rgba(125, 95, 255, 0.9)) drop-shadow(0 0 9px rgba(125, 95, 255, 0.55)); }
 .source-many .body {
-  box-shadow:
-    0 0 0 3px rgba(16, 163, 127, 0.5),
-    0 0 0 7px rgba(217, 119, 87, 0.34),
-    0 0 18px rgba(66, 133, 244, 0.55);
+  filter:
+    drop-shadow(0 0 4px rgba(16, 163, 127, 0.8))
+    drop-shadow(0 0 7px rgba(217, 119, 87, 0.6))
+    drop-shadow(0 0 11px rgba(66, 133, 244, 0.6));
 }
 
 /* ============ IDLE ONE-OFF ACTIONS ============ */
@@ -926,11 +981,16 @@ body {
   50%      { transform: rotate(5deg); }
 }
 
-/* Ghost: taller rounded top, translucent body, scalloped hem, no feet. */
+/* Ghost: taller rounded top, translucent body, scalloped hem, no feet.
+   More see-through than a slime, with a soft ectoplasmic glow so it reads as
+   ethereal rather than just a recoloured blob. */
 .skin-ghost .body {
   border-radius: 50% 50% 14% 14% / 64% 64% 20% 20%;
-  opacity: 0.93;
+  opacity: 0.82;
+  filter: drop-shadow(0 0 7px rgba(255, 255, 255, 0.45));
 }
+/* No grounded contact shadow — it floats. */
+.skin-ghost .shadow { opacity: 0.1; }
 .skin-ghost .foot { display: none; }
 .skin-ghost .sprout { display: none; }
 .skin-ghost .body::before {
@@ -1081,9 +1141,9 @@ body {
 .ai-badge.source-copilot { background: #6e40c9; }
 .ai-badge.source-cursor  { background: #3b3b4f; }
 .ai-badge.source-ollama  { background: #b65f1f; }
-.source-copilot .body { box-shadow: 0 0 0 3px rgba(110, 64, 201, 0.65), 0 0 14px rgba(110, 64, 201, 0.5); }
-.source-cursor  .body { box-shadow: 0 0 0 3px rgba(59, 59, 79, 0.7), 0 0 14px rgba(59, 59, 79, 0.5); }
-.source-ollama  .body { box-shadow: 0 0 0 3px rgba(182, 95, 31, 0.65), 0 0 14px rgba(182, 95, 31, 0.5); }
+.source-copilot .body { filter: drop-shadow(0 0 4px rgba(110, 64, 201, 0.9)) drop-shadow(0 0 9px rgba(110, 64, 201, 0.55)); }
+.source-cursor  .body { filter: drop-shadow(0 0 4px rgba(59, 59, 79, 0.95)) drop-shadow(0 0 9px rgba(59, 59, 79, 0.6)); }
+.source-ollama  .body { filter: drop-shadow(0 0 4px rgba(182, 95, 31, 0.9)) drop-shadow(0 0 9px rgba(182, 95, 31, 0.55)); }
 
 /* ============ FOCUS MODE ============ */
 /* A steady violet concentration glow during a focus work block. */
@@ -1141,7 +1201,7 @@ body {
   bottom: -6px;
   left: 50%;
   width: 122px;
-  height: 64px;  /* covers face: 64 - 6 = 58px up body, eyes at 54px from bottom */
+  height: 44px;  /* tucks up to ~38px from bottom, leaving the closed eyes peeking out above the hem */
   transform: translateX(-50%);
   /* diagonal stripe quilt texture over the base teal */
   background:
