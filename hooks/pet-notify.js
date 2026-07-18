@@ -166,10 +166,31 @@ function buildOpenLink(cwd) {
 // last assistant message's usage reflects how full the context window is:
 // fresh input + cached input both count toward what the model had to read.
 // Returns 0 if anything is unreadable — we never want to break the host.
+//
+// Only the end of the transcript is ever needed (we want the *last* usage
+// block), and transcripts grow to many MB over a long session — so read a
+// bounded tail rather than slurping the whole file on every single hook event.
+const TAIL_BYTES = 256 * 1024;
+
+function readTail(file) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const size = fs.fstatSync(fd).size;
+    const len = Math.min(size, TAIL_BYTES);
+    const buf = Buffer.alloc(len);
+    fs.readSync(fd, buf, 0, len, size - len);
+    return buf.toString('utf8');
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 function contextTokens(transcriptPath) {
   if (!transcriptPath) return 0;
   try {
-    const lines = fs.readFileSync(transcriptPath, 'utf8').split('\n');
+    // The first line of a tail read is usually a partial record; JSON.parse
+    // fails on it and the loop just skips it, which is exactly what we want.
+    const lines = readTail(transcriptPath).split('\n');
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i].trim();
       if (!line) continue;
@@ -219,9 +240,11 @@ if (moodArg) {
 } else {
   // No args: read Claude Code hook JSON from stdin and map the event.
   let input = '';
+  let stdinTimeout = null;
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (c) => (input += c));
   process.stdin.on('end', () => {
+    clearTimeout(stdinTimeout);
     let payload = {};
     try {
       payload = JSON.parse(input || '{}');
@@ -277,6 +300,8 @@ if (moodArg) {
     }
     send({ mood: state.mood, text, ttl: state.ttl, ctx });
   });
-  // If nothing arrives on stdin quickly, just exit.
-  setTimeout(() => process.exit(0), 1000);
+  // If nothing arrives on stdin quickly, just exit. Cleared once we've read the
+  // payload, so the timer can't fire mid-POST and kill the request before it
+  // reaches the pet (send() is async and can outlive this 1s window).
+  stdinTimeout = setTimeout(() => process.exit(0), 1000);
 }

@@ -163,6 +163,27 @@ function clampToScreen(x, y, w = WIN_W, h = WIN_H) {
   };
 }
 
+// Unplugging a monitor (or changing its resolution) can strand the pet on
+// coordinates that no longer belong to any display — invisible, and only
+// recoverable via the tray's "Reset position". Re-clamp it onto a real screen
+// whenever the display layout changes.
+function rescueOffscreenWindow() {
+  if (!win || win.isDestroyed()) return;
+  const [x, y] = win.getPosition();
+  const [w, h] = win.getSize();
+  const next = clampToScreen(x, y, w, h);
+  if (next.x === x && next.y === y) return;
+  cancelMoveAnim(); // a fling/stroll aimed at the old geometry is now meaningless
+  win.setPosition(next.x, next.y);
+  savePosition();
+}
+
+function watchDisplays() {
+  screen.on('display-removed', rescueOffscreenWindow);
+  screen.on('display-added', rescueOffscreenWindow);
+  screen.on('display-metrics-changed', rescueOffscreenWindow);
+}
+
 function createWindow() {
   const scale = clampScale(store.get('scale'));
   const w = Math.round(WIN_W * scale);
@@ -996,6 +1017,7 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
     createTray();
     registerHotkey();
+    watchDisplays();
     scheduleWander();
 
     // Keep long-running sessions fresh: when the calendar day rolls over, the

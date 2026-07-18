@@ -29,6 +29,7 @@ function createStore(app) {
     focus: { work: 25, break: 5 }, // pomodoro durations, in minutes
     stats: null, // { date: 'YYYY-MM-DD', perAi: { claude: {...}, ... } }
     lifetimeTasks: 0, // total completed tasks ever (drives cosmetic unlocks)
+    weekHistory: [], // rolling 7 days: [{ date, tasks, activeMs }]
     events: [] // missed-event log: [{ at, source, kind, text }], newest last
   };
 
@@ -41,10 +42,21 @@ function createStore(app) {
 
   let writeTimer = null;
   function flush() {
+    // Write to a sibling temp file and rename over the real one, so a crash or
+    // power loss mid-write can never leave a half-written (unparseable) config
+    // — the rename is atomic, and the reader above falls back to defaults only
+    // if the *complete* previous file is somehow unreadable.
+    const tmp = file + '.tmp';
     try {
-      fs.writeFileSync(file, JSON.stringify(data, null, 2));
+      fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+      fs.renameSync(tmp, file);
     } catch (err) {
       console.error('[pet] could not save config:', err.message);
+      try {
+        fs.unlinkSync(tmp);
+      } catch {
+        /* nothing to clean up */
+      }
     }
   }
 

@@ -323,7 +323,9 @@ function burst(type, count) {
 // cosmetic, focus glow, party hat, carry wobble, or the confirm-nudge bounce.
 const PERSISTENT_FLAGS = [
   'blink', 'attention', 'attention-strong', 'party',
-  'grabbed', 'rainbow', 'focusing', 'bloom', 'has-sprite'
+  'grabbed', 'rainbow', 'focusing', 'bloom', 'has-sprite',
+  // The task-done flourish outlives the setMood() that triggers it.
+  'big-celebrate'
 ];
 function isPersistentClass(c) {
   return (
@@ -417,8 +419,14 @@ function startConfirmNudge() {
   scheduleNextNudge();
 }
 
+// After this many rounds the pet stops chiming and re-popping the bubble. It
+// stays visibly flagged (bouncing, stressed) so the prompt isn't forgotten, but
+// a confirm you've deliberately left sitting stops making noise every 8s.
+const MAX_LOUD_NUDGES = 6;
+
 function scheduleNextNudge() {
   clearTimeout(confirmNudgeTimer);
+  if (confirmLevel >= MAX_LOUD_NUDGES) return; // gone quiet; pet stays flagged
   // First re-nudge after ~14s, then a touch sooner each round (min 8s).
   const delay = Math.max(8000, 16000 - confirmLevel * 1500);
   confirmNudgeTimer = setTimeout(() => {
@@ -967,9 +975,12 @@ window.addEventListener('mousemove', (e) => {
 // Idle behaviors: blinking, occasional hop, sleep after inactivity
 // ---------------------------------------------------------------------------
 function blink() {
-  if (currentMood === 'sleeping') return;
-  pet.classList.add('blink');
-  setTimeout(() => pet.classList.remove('blink'), 140);
+  // A sleeping pet keeps its eyes shut — but the loop must still reschedule,
+  // otherwise blinking stops for good the first time the pet nods off.
+  if (currentMood !== 'sleeping') {
+    pet.classList.add('blink');
+    setTimeout(() => pet.classList.remove('blink'), 140);
+  }
   // schedule next blink at a random interval
   setTimeout(blink, 2200 + Math.random() * 3500);
 }
