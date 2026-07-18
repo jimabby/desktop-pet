@@ -175,12 +175,12 @@ body {
   position: absolute;
   bottom: -4px;
   left: 50%;
-  width: 80px;
-  height: 16px;
+  width: 76px;
+  height: 12px;
   transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.22);
+  background: rgba(26, 48, 43, 0.2);
   border-radius: 50%;
-  filter: blur(2px);
+  filter: blur(3px);
   z-index: 0;
   animation: shadow-breathe 2.8s ease-in-out infinite;
 }
@@ -242,18 +242,17 @@ body {
   position: absolute;
   bottom: 0;
   left: 50%;
-  width: 100px;
+  width: 98px;
   height: 88px;
   transform: translateX(-50%);
   background: linear-gradient(160deg, var(--body-1, #7ee8a0) 0%, var(--body-2, #45c97a) 100%);
-  border-radius: 50% 50% 46% 46% / 60% 60% 40% 40%;
+  border-radius: 49% 49% 43% 43% / 58% 58% 42% 42%;
   /* Soft, layered gel shading: blurred bottom-right occlusion, a broad top-left
      light, a thin crown rim-light, and a gentle ground shadow for depth. */
   box-shadow:
-    inset -10px -13px 18px rgba(0, 0, 0, 0.14),
-    inset 11px 13px 22px rgba(255, 255, 255, 0.42),
-    inset 0 6px 7px -2px rgba(255, 255, 255, 0.32),
-    0 7px 15px rgba(0, 0, 0, 0.13);
+    inset -9px -12px 15px rgba(24, 65, 53, 0.13),
+    inset 9px 11px 18px rgba(255, 255, 255, 0.38),
+    0 7px 12px rgba(24, 53, 45, 0.15);
   z-index: 1;
   animation: breathe 2.8s ease-in-out infinite;
 }
@@ -261,23 +260,23 @@ body {
 /* eyes */
 .eye {
   position: absolute;
-  top: 34px;
-  width: 16px;
+  top: 33px;
+  width: 15px;
   height: 18px;
   background: #fff;
   border-radius: 50%;
   z-index: 2;
   overflow: hidden;
 }
-.eye.left { left: 26px; }
-.eye.right { right: 26px; }
+.eye.left { left: 25px; }
+.eye.right { right: 25px; }
 .pupil {
   position: absolute;
   top: 4px;
   left: 4px;
   width: 8px;
-  height: 9px;
-  background: #2b2b3a;
+  height: 10px;
+  background: #283936;
   border-radius: 50%;
 }
 /* a tiny catch-light so the eyes look glossy */
@@ -305,7 +304,7 @@ body {
   width: 14px;
   height: 7px;
   transform: translateX(-50%);
-  border: 2px solid #2b2b3a;
+  border: 2px solid #30423e;
   border-top: 0;
   border-radius: 0 0 12px 12px;
   z-index: 2;
@@ -340,7 +339,7 @@ body {
 /* A little leaf sprout on the pet's head. Sways gently; perks up when happy. */
 .sprout {
   position: absolute;
-  top: 8px;
+  top: 22px;
   left: 50%;
   width: 0;
   height: 0;
@@ -421,16 +420,16 @@ body {
 .arm {
   position: absolute;
   top: 60px;
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 20px;
   background: linear-gradient(160deg, var(--body-1, #7ee8a0) 0%, var(--body-2, #45c97a) 100%);
-  border-radius: 50%;
+  border-radius: 55% 55% 70% 70%;
   box-shadow: inset -2px -2px 0 rgba(0, 0, 0, 0.07);
   z-index: 0;
   transform-origin: top center;
 }
-.arm.left { left: 0; transform: rotate(18deg); animation: arm-sway-l 3s ease-in-out infinite; }
-.arm.right { right: 0; transform: rotate(-18deg); animation: arm-sway-r 3s ease-in-out infinite; }
+.arm.left { left: 1px; transform: rotate(18deg); animation: arm-sway-l 3s ease-in-out infinite; }
+.arm.right { right: 1px; transform: rotate(-18deg); animation: arm-sway-r 3s ease-in-out infinite; }
 
 .foot {
   position: absolute;
@@ -513,10 +512,10 @@ body {
 /* A soft glossy highlight that drifts across the body, giving it a gel look. */
 .shine {
   position: absolute;
-  top: 10px;
-  left: 14px;
-  width: 36px;
-  height: 25px;
+  top: 9px;
+  left: 15px;
+  width: 30px;
+  height: 20px;
   background: radial-gradient(ellipse at 38% 32%, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0) 72%);
   border-radius: 50%;
   z-index: 2;
@@ -656,6 +655,13 @@ body {
   height: 12px;
   width: 18px;
   border-width: 3px;
+}
+.mood-happy .eye {
+  height: 13px;
+  margin-top: 3px;
+}
+.mood-happy .sprout {
+  animation: sprout-perk 0.28s ease-in-out 5;
 }
 
 /* stressed: heavy context — flushed red, tense tremble, a sliding sweat drop */
@@ -899,9 +905,16 @@ body {
   width: 16px;
   border-width: 3px;
 }
+#pet.grabbed .body {
+  animation: carried-squish 0.42s ease-in-out infinite;
+}
 @keyframes carried-wobble {
   0%, 100% { transform: rotate(-4deg); }
   50%      { transform: rotate(4deg); }
+}
+@keyframes carried-squish {
+  0%, 100% { transform: translateX(-50%) scale(1.03, 0.96); }
+  50%      { transform: translateX(-50%) scale(0.97, 1.04); }
 }
 @keyframes foot-kick {
   0%, 100% { transform: translateY(0) rotate(0); }
