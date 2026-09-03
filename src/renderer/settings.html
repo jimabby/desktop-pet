@@ -99,6 +99,28 @@
         cursor: pointer;
       }
       button:hover { background: #7a5cf0; }
+      button.mini {
+        padding: 6px 12px;
+        font-size: 12px;
+        border-radius: 999px;
+      }
+      button.mini.ghost {
+        background: #fff;
+        color: #2b2b3a;
+        border: 1.5px solid #d3d7e0;
+      }
+      button.mini.ghost:hover { background: #f4f5f8; }
+      button:disabled { opacity: 0.45; cursor: not-allowed; }
+      .row3 { display: flex; gap: 10px; }
+      .row3 .field { flex: 1; }
+      input[type="time"] {
+        width: 100%;
+        padding: 6px 10px;
+        font-size: 13px;
+        border: 1px solid #d3d7e0;
+        border-radius: 9px;
+        background: #fff;
+      }
     </style>
   </head>
   <body>
@@ -134,6 +156,30 @@
     <div class="toggle"><span>Time-of-day tint</span><input type="checkbox" id="timeOfDay" /></div>
     <div class="toggle"><span>Wander on its own</span><input type="checkbox" id="wander" /></div>
     <div class="toggle"><span>Throw physics</span><input type="checkbox" id="physics" /></div>
+    <div class="toggle">
+      <span>Notify when hidden</span><input type="checkbox" id="notifyWhenHidden" />
+    </div>
+    <div class="hint">
+      Send a system notification for confirms and errors while the pet is hidden —
+      otherwise the moment that matters happens off-screen.
+    </div>
+
+    <h2>Quiet hours</h2>
+    <div class="toggle"><span>Do not disturb</span><input type="checkbox" id="quietEnabled" /></div>
+    <div class="row2">
+      <div class="field">
+        <label for="quietFrom">From</label>
+        <input type="time" id="quietFrom" />
+      </div>
+      <div class="field">
+        <label for="quietTo">To</label>
+        <input type="time" id="quietTo" />
+      </div>
+    </div>
+    <div class="hint">
+      The pet keeps working and keeps counting — it just stops chiming,
+      notifying, and escalating its nudges. Wraps past midnight.
+    </div>
 
     <h2>Focus (Pomodoro)</h2>
     <div class="row2">
@@ -159,9 +205,54 @@
       <div class="hint">Context size that flips the pet into the strained look. 0 = off.</div>
     </div>
     <div class="field">
+      <label for="ctxMax">Context ring full at (k tokens)</label>
+      <input type="number" id="ctxMax" min="1" max="10000" step="10" />
+      <div class="hint" id="ctxMaxHint">Window size the usage ring treats as 100%.</div>
+    </div>
+    <div class="field">
       <label for="token">Control-server token</label>
       <input type="password" id="token" placeholder="(none)" />
-      <div class="hint">Shared secret. Set the same value as the hook's PET_TOKEN.</div>
+      <div class="hint">
+        Generated on first run. The bundled hook reads it automatically; paste it
+        into the browser userscript's TOKEN if you use that. Clearing it leaves
+        the pet open to any web page you have loaded.
+      </div>
+    </div>
+    <div class="field">
+      <label>Connection</label>
+      <div class="hint" id="serverStatus">…</div>
+    </div>
+    <div class="toggle">
+      <span>Check for updates on launch</span><input type="checkbox" id="autoUpdate" />
+    </div>
+    <div class="hint" id="autoUpdateHint"></div>
+
+    <h2>Sprite art</h2>
+    <div class="field">
+      <div class="chips">
+        <button type="button" class="mini" id="spritePick">Choose image…</button>
+        <button type="button" class="mini ghost" id="spriteClear">Use drawn pet</button>
+      </div>
+      <div class="hint" id="spriteStatus">Using the built-in drawn pet.</div>
+    </div>
+    <div class="row3" id="spriteGeom" hidden>
+      <div class="field">
+        <label for="spriteCols">Columns</label>
+        <input type="number" id="spriteCols" min="1" max="64" />
+      </div>
+      <div class="field">
+        <label for="spriteRows">Rows</label>
+        <input type="number" id="spriteRows" min="1" max="64" />
+      </div>
+      <div class="field">
+        <label for="spriteFps">FPS</label>
+        <input type="number" id="spriteFps" min="1" max="60" />
+      </div>
+    </div>
+    <div class="hint" id="spriteHint" hidden>
+      Columns are animation frames; rows are moods, top to bottom:
+      idle, thinking, working, happy, stressed, sleeping, error. A sheet with
+      fewer rows reuses its last one. PNG/GIF/WebP, up to 4&nbsp;MB.
     </div>
 
     <div class="row">

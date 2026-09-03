@@ -18,15 +18,18 @@
  * it finishes. No universal hook system exists for these web UIs, so we infer
  * the state from the DOM.
  *
- * CORS on the pet server is open, so a plain fetch from the page works.
- * If you launched the pet with PET_TOKEN, set the same value in TOKEN below.
+ * CORS on the pet server is open, so a plain fetch from the page works — which
+ * is exactly why the pet requires a token. It generates one on first run; copy
+ * it from the pet's Settings window ("Control-server token") into TOKEN below,
+ * and check the port there too if 7337 was taken on your machine. Without a
+ * matching token every POST here comes back 401 and the pet stays idle.
  */
 (function () {
   'use strict';
 
   // ---- config (edit if you changed the pet's port or set a token) ----
-  const PORT = 7337;
-  const TOKEN = ''; // must match the app's PET_TOKEN if you set one
+  const PORT = 7337; // pet Settings ▸ Advanced ▸ Connection shows the real one
+  const TOKEN = ''; // REQUIRED — copy from pet Settings ▸ Advanced ▸ token
   const ENDPOINT = `http://127.0.0.1:${PORT}/state`;
 
   // Which site are we on -> which AI label/tint the pet should use.

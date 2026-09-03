@@ -117,9 +117,17 @@ function save() {
     timeOfDay: $('timeOfDay').checked,
     wander: $('wander').checked,
     physics: $('physics').checked,
+    notifyWhenHidden: $('notifyWhenHidden').checked,
+    autoUpdate: $('autoUpdate').checked,
     hotkey: $('hotkey').value.trim(),
     stressTokens: Math.max(0, Number($('stress').value) || 0) * 1000,
+    ctxMax: Math.max(1, Number($('ctxMax').value) || 200) * 1000,
     token: $('token').value,
+    quiet: {
+      enabled: $('quietEnabled').checked,
+      from: $('quietFrom').value,
+      to: $('quietTo').value
+    },
     focus: {
       work: Number($('focusWork').value) || 25,
       break: Number($('focusBreak').value) || 5
@@ -127,14 +135,58 @@ function save() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Sprite art. Picking runs in main (native dialog); we only ever hold metadata.
+// ---------------------------------------------------------------------------
+function renderSprite(sprite) {
+  const has = !!sprite;
+  $('spriteGeom').hidden = !has;
+  $('spriteHint').hidden = !has;
+  $('spriteClear').disabled = !has;
+  if (has) {
+    $('spriteStatus').textContent = `Using ${sprite.name} — ${sprite.cols}×${sprite.rows} @ ${sprite.fps} fps.`;
+    $('spriteCols').value = sprite.cols;
+    $('spriteRows').value = sprite.rows;
+    $('spriteFps').value = sprite.fps;
+  } else {
+    $('spriteStatus').textContent = 'Using the built-in drawn pet.';
+  }
+}
+
+function saveSpriteGeometry() {
+  window.settingsAPI.setSprite({
+    cols: Number($('spriteCols').value) || 1,
+    rows: Number($('spriteRows').value) || 1,
+    fps: Number($('spriteFps').value) || 8
+  });
+}
+
+$('spritePick').addEventListener('click', async () => {
+  const res = await window.settingsAPI.pickSprite();
+  if (res && res.ok) renderSprite(res.sprite);
+  else if (res && res.error) $('spriteStatus').textContent = `Couldn't use that file: ${res.error}`;
+});
+
+$('spriteClear').addEventListener('click', () => {
+  window.settingsAPI.clearSprite();
+  renderSprite(null);
+});
+
+['spriteCols', 'spriteRows', 'spriteFps'].forEach((id) =>
+  $(id).addEventListener('change', saveSpriteGeometry)
+);
+
 nameInput.addEventListener('input', () => {
   renderPreview();
   save();
 });
 
 // Save the rest of the controls on change.
-['sound', 'timeOfDay', 'wander', 'physics', 'focusWork', 'focusBreak', 'hotkey', 'stress', 'token']
-  .forEach((id) => $(id).addEventListener('change', save));
+[
+  'sound', 'timeOfDay', 'wander', 'physics', 'notifyWhenHidden', 'autoUpdate',
+  'focusWork', 'focusBreak', 'hotkey', 'stress', 'ctxMax', 'token',
+  'quietEnabled', 'quietFrom', 'quietTo'
+].forEach((id) => $(id).addEventListener('change', save));
 
 $('done').addEventListener('click', () => window.settingsAPI.close());
 
@@ -150,12 +202,37 @@ $('done').addEventListener('click', () => window.settingsAPI.close());
   $('timeOfDay').checked = cfg.timeOfDay !== false;
   $('wander').checked = cfg.wander !== false;
   $('physics').checked = cfg.physics !== false;
+  $('notifyWhenHidden').checked = cfg.notifyWhenHidden !== false;
+  $('autoUpdate').checked = cfg.autoUpdate !== false;
   $('hotkey').value = cfg.hotkey || '';
   $('stress').value = Math.round((cfg.stressTokens || 0) / 1000);
+  $('ctxMax').value = Math.round((cfg.ctxMax || 200000) / 1000);
   $('token').value = cfg.token || '';
   $('focusWork').value = (cfg.focus && cfg.focus.work) || 25;
   $('focusBreak').value = (cfg.focus && cfg.focus.break) || 5;
 
+  const quiet = cfg.quiet || {};
+  $('quietEnabled').checked = !!quiet.enabled;
+  $('quietFrom').value = quiet.from || '22:00';
+  $('quietTo').value = quiet.to || '08:00';
+
+  // PET_CTX_MAX in the environment overrides whatever is saved here, so say so
+  // rather than letting the field look editable but have no effect.
+  if (cfg.ctxMaxLocked) {
+    $('ctxMax').disabled = true;
+    $('ctxMaxHint').textContent = 'Overridden by the PET_CTX_MAX environment variable.';
+  }
+
+  $('serverStatus').textContent = cfg.serverError
+    ? `⚠️ offline — ${cfg.serverError}`
+    : `Listening on 127.0.0.1:${cfg.port}.`;
+
+  if (!cfg.canAutoUpdate) {
+    $('autoUpdate').disabled = true;
+    $('autoUpdateHint').textContent = 'Only available in a packaged, published build.';
+  }
+
+  renderSprite(cfg.sprite);
   renderSwatches();
   renderSkins();
   renderCosmetics();

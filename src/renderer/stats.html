@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+    <title>Pet Activity</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+      body {
+        font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+        background: #f4f5f8;
+        color: #2b2b3a;
+        padding: 18px 20px 24px;
+        font-size: 13px;
+      }
+      h1 { font-size: 15px; margin-bottom: 14px; }
+      h2 {
+        font-size: 10.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #9aa0ad;
+        margin: 20px 0 10px;
+      }
+      .cards { display: flex; gap: 10px; }
+      .card {
+        flex: 1;
+        background: #fff;
+        border-radius: 12px;
+        padding: 12px 14px;
+        box-shadow: 0 1px 2px rgba(20, 20, 40, 0.06);
+      }
+      .card .value { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; }
+      .card .label { font-size: 10.5px; color: #9aa0ad; margin-top: 2px; font-weight: 600; }
+
+      /* 7-day chart: one column per day, bar height scaled to the busiest day. */
+      .chart {
+        display: flex;
+        align-items: flex-end;
+        gap: 8px;
+        height: 132px;
+        background: #fff;
+        border-radius: 12px;
+        padding: 12px 14px;
+        box-shadow: 0 1px 2px rgba(20, 20, 40, 0.06);
+      }
+      .day { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; }
+      .day .bar-wrap { flex: 1; width: 100%; display: flex; align-items: flex-end; }
+      .day .bar {
+        width: 100%;
+        min-height: 3px;
+        border-radius: 5px 5px 2px 2px;
+        background: linear-gradient(180deg, #7ee8a0 0%, #45c97a 100%);
+      }
+      .day.today .bar { background: linear-gradient(180deg, #c3b5ff 0%, #8f6fff 100%); }
+      .day .n { font-size: 10px; font-weight: 700; color: #6b7280; margin-bottom: 4px; height: 12px; }
+      .day .d { font-size: 10px; color: #9aa0ad; margin-top: 6px; font-weight: 600; }
+
+      table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; }
+      th, td { text-align: left; padding: 8px 12px; font-size: 12px; }
+      th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; color: #9aa0ad; }
+      tbody tr + tr td { border-top: 1px solid #eef0f4; }
+      td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+      ul { list-style: none; }
+      li {
+        background: #fff;
+        border-radius: 10px;
+        padding: 8px 12px;
+        margin-bottom: 6px;
+        font-size: 12px;
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+      }
+      li .who { font-weight: 700; }
+      li .what { flex: 1; color: #4b5160; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      li .ago { color: #9aa0ad; font-size: 10.5px; white-space: nowrap; }
+      .empty { color: #9aa0ad; font-size: 12px; padding: 10px 2px; }
+    </style>
+  </head>
+  <body>
+    <h1>📊 Activity</h1>
+
+    <div class="cards">
+      <div class="card"><div class="value" id="week-tasks">0</div><div class="label">tasks this week</div></div>
+      <div class="card"><div class="value" id="week-active">0m</div><div class="label">active this week</div></div>
+      <div class="card"><div class="value" id="lifetime">0</div><div class="label">tasks all time</div></div>
+    </div>
+
+    <h2>Last 7 days</h2>
+    <div class="chart" id="chart"></div>
+
+    <h2>Today, by assistant</h2>
+    <div id="per-ai"></div>
+
+    <h2>Recent</h2>
+    <ul id="events"></ul>
+
+    <script src="stats.js"></script>
+  </body>
+</html>

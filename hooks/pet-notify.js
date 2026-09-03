@@ -12,9 +12,9 @@
  * Or pipe Claude Code hook JSON on stdin (it reads hook_event_name and maps it).
  *
  * Env:
- *   PET_PORT          (default 7337)
+ *   PET_PORT          (default: the port the app saved, else 7337)
  *   PET_SOURCE        (default "claude")
- *   PET_TOKEN         (optional; must match the app's PET_TOKEN if it set one)
+ *   PET_TOKEN         (optional; read from the app's config file when unset)
  *   PET_EDITOR_SCHEME (default "vscode"; e.g. "cursor", "vscode-insiders")
  *   PET_OPEN_URL      (optional; overrides the auto-built editor link entirely)
  */
@@ -24,7 +24,6 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const PORT = Number(process.env.PET_PORT) || 7337;
 const SOURCE = process.env.PET_SOURCE || 'claude';
 
 // The pet app saves its settings (token, stress threshold, …) to a JSON file in
@@ -49,6 +48,14 @@ function readPetConfig() {
 
 const PET_CONFIG = readPetConfig();
 
+// Where the pet is actually listening. The app writes back the port it bound
+// to, which matters when 7337 was taken and it fell back to 7338+ — otherwise
+// every hook event would go to a dead socket and the pet would never react.
+const PORT =
+  Number(process.env.PET_PORT) || Number(PET_CONFIG.port) || 7337;
+
+// The app generates a token on first run and saves it here, so auth works with
+// no setup. PET_TOKEN still wins for anyone running the pet with an explicit one.
 const TOKEN = process.env.PET_TOKEN || PET_CONFIG.token || '';
 
 // When the conversation's context grows past this many tokens, the pet shows a
@@ -235,8 +242,34 @@ function send(state) {
 
 const [, , moodArg, ...rest] = process.argv;
 
+// Manual (CLI) states need a TTL of their own. Without one the pet would hold a
+// 'working' mood forever: nothing else is coming to clear it, since a script
+// that crashes or is Ctrl-C'd never sends its matching 'done'.
+const CLI_TTL = { thinking: 120000, working: 120000, stressed: 120000, happy: 6000, error: 8000 };
+
+function usage(problem) {
+  const moods = [...new Set(Object.values(MOOD_ALIASES))].sort().join(', ');
+  const text = `usage: pet <mood> [message...]
+moods: ${moods}
+       (aliases: ${Object.keys(MOOD_ALIASES).sort().join(', ')})
+example: pet working "building the bundle..."`;
+  if (problem) {
+    console.error(`pet: ${problem}\n${text}`);
+    process.exit(2);
+  }
+  console.log(text);
+  process.exit(0);
+}
+
+if (moodArg === '--help' || moodArg === '-h') usage('');
+
 if (moodArg) {
-  send({ mood: MOOD_ALIASES[moodArg.toLowerCase()] || moodArg, text: rest.join(' ') });
+  // An unrecognized word used to be forwarded as-is, and the server quietly
+  // coerced anything it didn't know to 'idle' — so a typo read as success while
+  // actually clearing the pet. Fail loudly instead.
+  const mood = MOOD_ALIASES[moodArg.toLowerCase()];
+  if (!mood) usage(`unknown mood "${moodArg}"`);
+  send({ mood, text: rest.join(' '), ttl: CLI_TTL[mood] || 0 });
 } else {
   // No args: read Claude Code hook JSON from stdin and map the event.
   let input = '';

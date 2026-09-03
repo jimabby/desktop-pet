@@ -410,8 +410,7 @@ body {
 }
 /* bloom: petals fan out */
 .mood-happy .sprout .petal,
-#pet.act-wiggle .sprout .petal,
-#pet.bloom .sprout .petal {
+#pet.act-wiggle .sprout .petal {
   transform: rotate(var(--a)) translateY(-5px) scale(1);
   opacity: 1;
 }

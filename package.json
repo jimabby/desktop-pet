@@ -1,6 +1,6 @@
 {
   "name": "desktop-pet",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A cross-platform desktop pet that reacts when your AI assistant is working.",
   "main": "src/main.js",
   "bin": {
@@ -9,11 +9,13 @@
   "scripts": {
     "start": "node scripts/launch.js",
     "notify": "node hooks/pet-notify.js",
-    "test": "node pettest.js",
+    "test": "node pettest.js && node wiringtest.js",
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
     "dist:win": "electron-builder --win",
-    "dist:linux": "electron-builder --linux"
+    "dist:linux": "electron-builder --linux",
+    "test:server": "node pettest.js",
+    "test:wiring": "node wiringtest.js"
   },
   "author": "",
   "license": "MIT",
@@ -29,7 +31,9 @@
       "package.json"
     ],
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "category": "public.app-category.entertainment",
       "extendInfo": {
         "LSUIElement": 1
@@ -38,17 +42,30 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": true
+      "notarize": true,
+      "icon": "build/icon.png"
     },
     "dmg": {
       "sign": false
     },
     "win": {
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
     },
     "linux": {
-      "target": ["AppImage"],
-      "category": "Utility"
-    }
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility",
+      "icon": "build/icon.png"
+    },
+    "extraResources": [
+      "hooks/**/*"
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

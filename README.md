@@ -46,19 +46,32 @@ is working**.
   conversation's context window fills up, with a compact `85k`-style token label
 - **Daily stats** — the tray's **Today** menu tallies per-AI tasks, active time,
   confirms, and errors (resets each day)
+- **Activity window** — tray ▸ **Activity…** charts the last 7 days of completed
+  tasks, per-assistant totals for today, and the recent-event log
 - **Missed-event log** — the tray's **Recent** menu shows the last ~8 confirms,
-  errors, and completions with how long ago they happened
+  errors, and completions with how long ago they happened (repeats of the same
+  event are folded together instead of flooding it)
 - **Name + color** — name your pet and pick its body color in **Settings…** (saved)
 - **Global hotkey** — show/hide the pet from anywhere (default `Cmd/Ctrl+Shift+P`)
 - **Sound chimes** on done/error (toggle from the tray)
 - **Confirm prompts** — when an AI needs your approval, the pet bounces with a `!`,
   chimes, and shows a clickable link back to your editor; **left unanswered it keeps
   nudging**, getting more insistent until you respond
-- **Tray menu**: show/hide, wake/poke, tricks, focus session, Today stats, Recent
-  log, settings, behavior toggles (wander / physics / time-of-day), resize, mute,
-  launch at login, reset position, quit
+- **Notifies you when hidden** — hide the pet and a confirm or error still
+  reaches you as a system notification; click it to bring the pet back (or jump
+  straight to the editor)
+- **Quiet hours** — a do-not-disturb window where the pet keeps working and
+  keeps counting but stops chiming, notifying, and escalating its nudges
+- **Sprite-sheet art** — drop in your own animated sheet from **Settings** and it
+  replaces the drawn pet, mood for mood
+- **Tray menu**: connection status, show/hide, wake/poke, tricks, focus session,
+  Today stats, Activity window, Recent log, settings, behavior toggles (wander /
+  physics / time-of-day / notify-when-hidden / quiet hours), resize, mute, launch
+  at login, reset position, check for updates, quit
 - **AI integration** via a tiny local control server + Claude Code hooks
-- **Optional token auth** so random web pages can't puppet your pet
+- **Token auth by default** — a secret is generated on first run so no web page
+  you have loaded can puppet your pet
+- **Auto-update** for packaged builds published with an update channel
 
 ## Run it
 
@@ -169,24 +182,43 @@ curl -s localhost:7337/state -H 'Content-Type: application/json' \
 `happy` and `error` moods play a short chime unless you've muted sounds from the
 tray.
 
-### Locking it down (optional token)
+### The token (on by default)
 
-The control server only listens on `127.0.0.1`, but CORS is open so any web page
-you visit could POST to it. To require a shared secret, launch the pet with a
-`PET_TOKEN` set and send the same token as an `X-Pet-Token` header:
+The control server only listens on `127.0.0.1`, but CORS is open — so without a
+token, any web page you happen to have loaded could POST to it: drive the pet,
+and plant a link in its bubble. So **the app generates a token on first run** and
+requires it on `/state`. There is nothing to set up:
+
+- `hooks/pet-notify.js` reads the token straight out of the app's config file, so
+  Claude Code hooks and the `pet` command just work.
+- Anything that *can't* read that file — the browser userscript, a script on
+  another machine — needs the value from **Settings… ▸ Advanced ▸ Control-server
+  token**, sent as an `X-Pet-Token` header.
+- `PET_TOKEN` in the environment overrides the saved one, on both sides.
+- `GET /health` stays public, so scripts can check the pet is up without it.
 
 ```bash
-PET_TOKEN=hunter2 npm start
-# then:
-curl -s localhost:7337/state -H 'X-Pet-Token: hunter2' \
+TOKEN='…from Settings…'
+curl -s localhost:7337/state -H "X-Pet-Token: $TOKEN" \
   -H 'Content-Type: application/json' -d '{"mood":"happy"}'
 ```
 
-You can also set the token in **Settings… → Advanced** (it takes effect live, no
-restart needed). `hooks/pet-notify.js` reads `PET_TOKEN` from its environment
-automatically, and falls back to the token saved in the app's config file when
-the env var isn't set — so a token typed into Settings reaches the hook too.
-`/health` stays public.
+Editing the token in Settings takes effect live, with no restart. Clearing it
+disables auth entirely — which leaves the pet open to any page in your browser.
+
+**A note on bubble links.** A confirm prompt can carry a link back to your
+editor, and clicking the bubble's link opens it. Poking the pet only *dismisses*
+the nudge — it never follows the link — so an incidental click can't send you
+somewhere you didn't read. Only `http`, `https`, `vscode`, `vscode-insiders`,
+`cursor`, and `windsurf` URLs are accepted at all.
+
+### If port 7337 is taken
+
+The pet walks up to the next free port and writes it into its config, so
+`pet-notify.js` still finds it. The tray's top line and **Settings ▸ Advanced ▸
+Connection** both show where it actually landed — and say so loudly if it
+couldn't get a port at all, rather than sitting there looking healthy while
+ignoring every event.
 
 ### Claude Code (automatic)
 
@@ -244,7 +276,15 @@ Trigger the same endpoint from wherever you can:
   PET_SOURCE=chatgpt node hooks/pet-notify.js happy "got an answer!"
   PET_SOURCE=gemini node hooks/pet-notify.js working "asking Gemini..."
   ```
-- **CLI tools**: wrap them in a shell function that pings the pet around the call.
+- **CLI tools**: wrap them with [hooks/pet-wrap.sh](hooks/pet-wrap.sh), which
+  pings the pet around any command and passes its exit code straight through:
+  ```bash
+  PET_SOURCE=aider ./hooks/pet-wrap.sh aider --model sonnet
+  ./hooks/pet-wrap.sh npm test
+  ```
+
+[hooks/OTHER-AGENTS.md](hooks/OTHER-AGENTS.md) has ready-made wiring for Codex
+CLI, Aider, Cursor/VS Code tasks, git hooks, and raw HTTP.
 
 ### The `pet` command
 
@@ -256,46 +296,64 @@ pet working "building..."   # show a working mood + bubble
 pet done                    # cheer
 pet error "tests failed"    # error buzz
 pet idle                    # back to idle
+pet --help                  # the full list of moods and aliases
 ```
 
-It honours the same `PET_PORT`, `PET_SOURCE`, and `PET_TOKEN` env vars, e.g.
-`PET_SOURCE=ollama pet thinking "asking llama3..."`.
+Busy moods sent this way carry a safety-net TTL, so a script that crashes or
+gets Ctrl-C'd before its `pet done` can't leave the pet working forever. An
+unrecognized mood exits `2` with a usage message rather than quietly resetting
+the pet to idle.
+
+It honours the same `PET_SOURCE` and `PET_TOKEN` env vars, e.g.
+`PET_SOURCE=ollama pet thinking "asking llama3..."`. `PET_PORT` overrides the
+port, which it otherwise reads from the app's config.
 
 ## Project layout
 
 ```
 src/
-  main.js            Electron main: window, tray, drag, throw physics, wander, focus timer, hotkey, stats, starts the server
-  preload.js         Safe IPC bridge to the renderer
+  main.js            Electron main: window, tray, drag, throw physics, wander, focus timer, hotkey, stats, notifications, updates, starts the server
+  preload.js         Safe IPC bridge to the pet renderer
   settings-preload.js  IPC bridge for the settings window
-  server.js          Local control server (the AI -> pet endpoint, optional token)
+  stats-preload.js   Read-only IPC bridge for the activity window
+  server.js          Local control server (the AI -> pet endpoint + token auth)
   store.js           Tiny JSON config store (position, settings, stats, events, unlocks) in userData
+  quiet.js           Do-not-disturb window maths (pure, so it's testable without Electron)
   renderer/
     index.html       Pet markup (body, skins, cosmetics, ring, badges)
     style.css        Pet art + mood animations + skins + cosmetics + per-source tint
     pet.js           Behavior: moods, bubbles, idle loop, click/drag, sounds, ctx ring, skins, focus, easter eggs
-    settings.html    Settings window markup (name, color, skin, cosmetic, behavior, focus, advanced)
+    settings.html    Settings window markup (name, color, skin, cosmetic, behavior, quiet hours, focus, advanced, sprite art)
     settings.js      Settings window behavior
+    stats.html       Activity window markup (7-day chart, per-AI table, recent events)
+    stats.js         Activity window rendering
 hooks/
   pet-notify.js      Sends a mood to the pet (CLI args or hook JSON on stdin)
+  pet-wrap.sh        Runs any command with the pet reacting to it, passing the exit code through
   pet-userscript.user.js  Browser userscript: ChatGPT/Gemini web -> pet (auto)
   claude-settings-example.json
-pettest.js           Smoke test for the server + hook script (npm test)
+  OTHER-AGENTS.md    Wiring up Codex, Aider, Cursor, git hooks, and raw HTTP
+build/
+  icon.png           App icon (electron-builder converts it per platform)
+  entitlements.mac.plist
+pettest.js           Server + hook + quiet-hours tests (npm run test:server)
+wiringtest.js        Loads main.js against a stubbed Electron to check the IPC
+                     handlers, tray menu, and settings/stats payloads (npm run test:wiring)
 ```
 
 ## Swapping in real art (sprite sheets)
 
 The default pet is hand-built from CSS (no image assets — crisp at any size and
-consistent across every mood and skin). When you have real art (e.g. a
-commissioned sprite sheet), there's a **drop-in pipeline** so you don't touch
-any behavior code.
+consistent across every mood and skin). To use your own art instead, open
+**Settings ▸ Sprite art ▸ Choose image…** and pick a sheet. No config-file
+editing, no restart.
 
-Lay the sheet out as **one row per mood, N frames left-to-right per row**, every
-frame square:
+Lay the sheet out as a grid: **columns are animation frames, rows are moods**,
+top to bottom, every frame square:
 
 ```
-row 0  idle      [f0][f1][f2][f3]
-row 1  thinking  [f0][f1][f2][f3]
+row 0  idle      [f0][f1][f2][f3][f4][f5]
+row 1  thinking  [f0][f1][f2][f3][f4][f5]
 row 2  working   [f0][f1][f2][f3][f4][f5]
 row 3  happy     …
 row 4  stressed  …
@@ -303,14 +361,31 @@ row 5  sleeping  …
 row 6  error     …
 ```
 
-Drop the PNG under `src/renderer/` (it must be a **local file** — the page's
-Content-Security-Policy blocks remote images) and add a `sprite` block to the
-app's config file (`pet-config.json` in the app's userData dir):
+Then set **Columns**, **Rows**, and **FPS** to match. A sheet with fewer than
+seven rows just reuses its last row for the remaining moods, so a two-row
+idle/working sheet still animates everything. PNG, GIF, or WebP, up to 4 MB.
+
+The image is stored inside the pet's own config (as a data URI) rather than
+referenced by path — the renderer's Content-Security-Policy only allows
+same-origin resources, and a packaged app can't write into its own read-only
+bundle. So your sheet keeps working if you move or delete the original file.
+
+When a sprite is active the CSS character is hidden and the sheet plays the
+matching mood row; cosmetics, the AI ring, badges, speech bubble, and particles
+still layer on top. **Use drawn pet** puts the CSS art back. (Reduce-motion
+pauses the sprite on its first frame.)
+
+<details>
+<summary>Hand-editing the config instead</summary>
+
+The GUI writes a `sprite` block into `pet-config.json` in the app's userData
+dir. You can still write one yourself for finer control — per-mood row/frame
+counts and per-mood FPS:
 
 ```json
 {
   "sprite": {
-    "url": "pet-sprites.png",
+    "url": "data:image/png;base64,…  (or a path under src/renderer/)",
     "cols": 6,
     "rows": 7,
     "fps": 8,
@@ -327,15 +402,37 @@ app's config file (`pet-config.json` in the app's userData dir):
 }
 ```
 
-- `url` — relative to `src/renderer/` (or any same-origin local path)
-- `cols` / `rows` — the sheet's grid (used to scale each frame to the pet box)
-- `fps` — default animation speed; override per mood with `fps` inside `moods`
-- each mood's `row` (0-based) + `frames` (how many cells that row uses)
+Picking a new sheet in Settings overwrites the `moods` map with the default
+one-row-per-mood layout.
 
-When a valid `sprite` is configured the CSS character is hidden and the sheet
-plays the matching mood row; cosmetics, the AI ring, badges, speech bubble, and
-particles still layer on top. Remove the `sprite` block to fall straight back to
-the CSS art. (Reduce-motion pauses the sprite on its first frame.)
+</details>
+
+## Staying out of your way
+
+The pet is built to be noticeable exactly when it matters and invisible the rest
+of the time.
+
+- **Quiet hours** (Settings ▸ Quiet hours, or the tray's Behavior menu) — set a
+  do-not-disturb window and the pet keeps working, keeps counting, and keeps
+  showing its mood, but stops chiming, stops sending notifications, and stops
+  escalating its nudges. The window wraps past midnight (`22:00` → `08:00`).
+- **Notify when hidden** — hiding the pet used to mean a permission prompt had
+  nowhere to appear. Now a confirm or error arrives as a system notification;
+  clicking it brings the pet back, or jumps straight to your editor when the
+  event carried a link. Turn it off in Settings ▸ Behavior.
+- **Mute** silences chimes without hiding anything.
+
+## Seeing what happened
+
+Tray ▸ **Activity…** opens a window with:
+
+- **totals** for the week and all time,
+- a **7-day chart** of completed tasks,
+- **today by assistant** — tasks, active time, confirms and errors per AI,
+- the **recent-event log**.
+
+It updates live while it's open. The tray's **Today** and **Recent** submenus
+show the same data in a glanceable form.
 
 ## Packaging (distributables)
 
@@ -349,7 +446,31 @@ npm run dist:win      # NSIS .exe installer
 npm run dist:linux    # AppImage
 ```
 
-Output lands in `dist/`. The same code produces all three.
+Output lands in `dist/`. The same code produces all three. The app icon comes
+from [build/icon.png](build/icon.png) — electron-builder converts it to `.icns`
+and `.ico` per platform. The `hooks/` folder ships alongside the app (in
+`Contents/Resources/hooks` on macOS), so someone who installed the `.dmg` still
+has `pet-notify.js` to point their Claude Code hooks at.
+
+### Releasing updates
+
+Packaged builds check for a new release on launch and offer a **Restart to
+update** item in the tray once one has downloaded. (Toggle the check in
+Settings ▸ Advanced.) This needs an update channel, which means adding a
+`publish` block to the `build` section of `package.json` — for GitHub Releases:
+
+```jsonc
+"publish": [{ "provider": "github", "owner": "your-user", "repo": "desktop-pet" }]
+```
+
+Then `GH_TOKEN=… npm run dist:mac -- --publish always`. electron-builder writes
+`app-update.yml` into the bundle and uploads the artifacts plus the
+`latest-*.yml` manifests the updater reads.
+
+Without a `publish` block nothing breaks — the check just reports that no update
+channel is configured, and **Check for updates…** stays disabled in a dev run.
+Updates on macOS require the build to be **signed** (see below); an unsigned app
+can download an update but not install it.
 
 ### Signing & notarizing the macOS build
 

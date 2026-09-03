@@ -45,6 +45,10 @@ let confirmNudgeTimer = null;
 const confirmInfo = { text: '', link: '', linkText: '' };
 const activeAis = new Map();
 let muted = false;
+// Do-not-disturb, computed in main from the configured window and pushed here
+// whenever it flips. The pet keeps working; it just stops making noise and
+// stops escalating its nudges.
+let quiet = false;
 
 // Moods that mean an AI is actively busy (used to time how long a task ran).
 const BUSY_MOODS = new Set(['thinking', 'working', 'stressed']);
@@ -75,6 +79,12 @@ const SOURCE_LABELS = {
 // ---------------------------------------------------------------------------
 window.petAPI.onSettings((s) => {
   if (typeof s.muted === 'boolean') muted = s.muted;
+  if (typeof s.quiet === 'boolean') {
+    quiet = s.quiet;
+    // Entering a quiet window shouldn't leave an escalation mid-flight.
+    if (quiet) clearTimeout(confirmNudgeTimer);
+    else if (confirmPending) scheduleNextNudge();
+  }
   if (Number.isFinite(s.ctxMax) && s.ctxMax > 0) ctxMax = s.ctxMax;
   if (s.appearance) applyAppearance(s.appearance);
 });
@@ -262,7 +272,7 @@ function tone(freq, when, dur, gain = 0.06) {
   osc.stop(when + dur);
 }
 function playSound(name) {
-  if (muted) return;
+  if (muted || quiet) return;
   try {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const t = audioCtx.currentTime;
@@ -323,7 +333,7 @@ function burst(type, count) {
 // cosmetic, focus glow, party hat, carry wobble, or the confirm-nudge bounce.
 const PERSISTENT_FLAGS = [
   'blink', 'attention', 'attention-strong', 'party',
-  'grabbed', 'rainbow', 'focusing', 'bloom', 'has-sprite',
+  'grabbed', 'rainbow', 'focusing', 'has-sprite',
   // The task-done flourish outlives the setMood() that triggers it.
   'big-celebrate'
 ];
@@ -426,6 +436,9 @@ const MAX_LOUD_NUDGES = 6;
 
 function scheduleNextNudge() {
   clearTimeout(confirmNudgeTimer);
+  // During do-not-disturb the pet still shows it's waiting (stressed, bubble up)
+  // but never escalates: no re-chime, no bigger bounce, no re-popped bubble.
+  if (quiet) return;
   if (confirmLevel >= MAX_LOUD_NUDGES) return; // gone quiet; pet stays flagged
   // First re-nudge after ~14s, then a touch sooner each round (min 8s).
   const delay = Math.max(8000, 16000 - confirmLevel * 1500);
@@ -457,7 +470,8 @@ function stopConfirmNudge({ restore = true } = {}) {
   }
 }
 
-// Open the pending link (clicking the bubble link, or the pet while one is up).
+// Open the pending link. Only ever called from a deliberate click on the
+// bubble's link element — never from a poke or any other incidental gesture.
 function openPendingLink() {
   if (!pendingLink) return false;
   window.petAPI.openLink(pendingLink);
@@ -707,10 +721,19 @@ let pokeStreakTimer = null;
 
 function react() {
   lastInteraction = Date.now();
-  // If a confirm prompt is waiting, a poke opens the editor instead of playing.
-  if (openPendingLink()) return;
-  // A poke also acknowledges a link-less confirm — stop pestering.
-  stopConfirmNudge({ restore: false });
+
+  // A poke acknowledges a waiting confirm — it stops the pet pestering you —
+  // but deliberately does NOT open its link. Anything that can reach the
+  // control server can choose that URL, so opening it on an incidental poke
+  // would make one stray click enough to follow a link nobody read. The link
+  // stays on screen instead, one deliberate click away.
+  const hadConfirm = confirmPending || !!pendingLink;
+  if (hadConfirm) {
+    const link = pendingLink;
+    stopConfirmNudge({ restore: true });
+    if (link) say(confirmInfo.text || 'still waiting on you', 15000, link, confirmInfo.linkText);
+    return;
+  }
 
   pokeStreak++;
   clearTimeout(pokeStreakTimer);

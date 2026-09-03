@@ -24,8 +24,23 @@ function createStore(app) {
     wander: true, // let the pet stroll a few px on its own when idle
     physics: true, // fling/throw the pet so it slides + bounces off edges
     hotkey: 'CommandOrControl+Shift+P', // global show/hide toggle ('' to disable)
-    token: '', // shared secret the control server requires (also read by the hook)
+    // Shared secret the control server requires. Generated on first run (see
+    // ensureToken in main.js) so the pet is never open to any web page you
+    // happen to have loaded; the hook reads it back out of this same file.
+    token: '',
+    // Port the control server actually bound to. Written back after startup so
+    // the hook can find the pet even when 7337 was taken and we fell back.
+    port: 0,
     stressTokens: 120000, // context size that flips the pet into the strained look
+    ctxMax: 200000, // context size treated as "full" by the pet's usage ring
+    // Native OS notification when a confirm arrives while the pet is hidden —
+    // otherwise the one moment that matters is invisible.
+    notifyWhenHidden: true,
+    autoUpdate: true, // check for new releases on launch (needs a publish target)
+    sprite: null, // optional sprite-sheet art: { url, cols, rows, fps?, moods }
+    // Do-not-disturb window. While active the pet stays silent and still: no
+    // chimes, no notifications, no escalating nudges.
+    quiet: { enabled: false, from: '22:00', to: '08:00' },
     focus: { work: 25, break: 5 }, // pomodoro durations, in minutes
     stats: null, // { date: 'YYYY-MM-DD', perAi: { claude: {...}, ... } }
     lifetimeTasks: 0, // total completed tasks ever (drives cosmetic unlocks)
@@ -33,9 +48,22 @@ function createStore(app) {
     events: [] // missed-event log: [{ at, source, kind, text }], newest last
   };
 
+  // Nested-object keys need a per-key merge: a config written by an older
+  // build may hold e.g. { quiet: { enabled: true } } with no 'from'/'to', and a
+  // plain spread would drop those defaults on the floor.
+  const NESTED_KEYS = ['focus', 'quiet'];
+
   let data = { ...defaults };
   try {
-    data = { ...defaults, ...JSON.parse(fs.readFileSync(file, 'utf8')) };
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+    data = { ...defaults, ...saved };
+    for (const key of NESTED_KEYS) {
+      if (saved[key] && typeof saved[key] === 'object' && !Array.isArray(saved[key])) {
+        data[key] = { ...defaults[key], ...saved[key] };
+      } else {
+        data[key] = { ...defaults[key] };
+      }
+    }
   } catch {
     /* first run or unreadable — use defaults */
   }

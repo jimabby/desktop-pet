@@ -1,15 +1,25 @@
 'use strict';
 
 const {
-  app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, shell, globalShortcut
+  app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, shell, globalShortcut,
+  Notification, dialog
 } = require('electron');
 const path = require('path');
+const crypto = require('crypto');
 const { startControlServer, ALLOWED_LINK_SCHEMES } = require('./server');
 const { createStore } = require('./store');
+const { parseClock, isQuietNow } = require('./quiet');
 
 const PET_PORT = Number(process.env.PET_PORT) || 7337;
-// How big a context window counts as "full" for the pet's usage ring.
-const CTX_MAX = Number(process.env.PET_CTX_MAX) || 200000;
+
+// How big a context window counts as "full" for the pet's usage ring. The env
+// var wins; otherwise it's whatever the Settings window last saved.
+function ctxMax() {
+  const fromEnv = Number(process.env.PET_CTX_MAX);
+  if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
+  const saved = Number(store && store.get('ctxMax'));
+  return Number.isFinite(saved) && saved > 0 ? saved : 200000;
+}
 
 // Body color presets the settings window offers (key -> [stop1, stop2]).
 const PALETTE = {
@@ -30,6 +40,10 @@ let win = null;
 let tray = null;
 let store = null;
 let settingsWin = null;
+let statsWin = null;
+// Where the control server actually bound, and why it didn't if it couldn't.
+let serverPort = 0;
+let serverError = '';
 
 const WIN_W = 240;
 const WIN_H = 320;
@@ -42,6 +56,28 @@ const SCALE_STEP = 0.1;
 function clampScale(s) {
   if (!Number.isFinite(s)) return 1;
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
+}
+
+// ---------------------------------------------------------------------------
+// Auth token. The control server speaks over an open CORS policy, so without a
+// token any web page you have loaded could puppet the pet — and, worse, plant a
+// bubble link. Generating one on first run makes auth the default with no setup
+// on the user's part: the bundled hook reads the same config file we write here.
+// ---------------------------------------------------------------------------
+function ensureToken() {
+  if (store.get('token')) return;
+  store.set('token', crypto.randomBytes(24).toString('hex'));
+  store.flushNow(); // the hook may read the file before our debounce fires
+}
+
+// ---------------------------------------------------------------------------
+// Do-not-disturb. While a quiet window is active the pet keeps working (moods,
+// stats, the ring) but stops demanding attention: no chimes, no OS
+// notifications, no escalating nudges. The window maths lives in ./quiet so it
+// can be tested without Electron.
+// ---------------------------------------------------------------------------
+function inQuietHours(now = new Date()) {
+  return isQuietNow(store.get('quiet'), now);
 }
 
 // ---- Drag state (handled in main so coordinates stay in global screen space) ----
@@ -284,10 +320,13 @@ function spriteConfig() {
 // Send the full settings bundle (mute, context-window size, appearance) to the
 // pet renderer. Called on load and whenever any of them change.
 function pushSettings() {
-  if (!win) return;
+  if (!win || win.isDestroyed()) return;
   win.webContents.send('settings', {
     muted: store.get('muted'),
-    ctxMax: CTX_MAX,
+    // Quiet hours read as "muted" to the renderer's sound + nudge logic, but
+    // are surfaced separately so the pet can also skip the escalating bounce.
+    quiet: inQuietHours(),
+    ctxMax: ctxMax(),
     appearance: appearance()
   });
 }
@@ -412,10 +451,24 @@ function recordStat(state) {
     if (a.lastBusyAt && now - a.lastBusyAt < 60000) a.activeMs += now - a.lastBusyAt;
     a.lastBusyAt = now;
   }
-  const counted = state.attention || state.mood === 'error' || state.mood === 'happy';
-  if (state.attention) a.confirms++;
-  if (state.mood === 'error') a.errors++;
-  if (state.mood === 'happy') {
+  // Claude Code re-fires Notification while it waits, so the same pending
+  // prompt can arrive many times over. Counting each one would inflate the
+  // confirm tally and flush the 8-slot Recent log with copies of one event.
+  const kind = state.attention
+    ? 'confirm'
+    : state.mood === 'error'
+      ? 'error'
+      : state.mood === 'happy'
+        ? 'done'
+        : '';
+  const text = state.text || DEFAULT_EVENT_TEXT[kind] || '';
+  const repeat = kind ? isRepeatEvent(src, kind, text) : false;
+
+  const counted =
+    !repeat && (state.attention || state.mood === 'error' || state.mood === 'happy');
+  if (state.attention && !repeat) a.confirms++;
+  if (state.mood === 'error' && !repeat) a.errors++;
+  if (state.mood === 'happy' && !repeat) {
     a.tasks++; // a completed turn/task
     bumpLifetime();
   }
@@ -427,12 +480,11 @@ function recordStat(state) {
     refreshWeekHistory();
     pushDailyStats();
     pushWeeklyStats();
+    pushActivity();
   }
 
   // Feed the missed-event log for the states worth catching up on later.
-  if (state.attention) logEvent(src, 'confirm', state.text || 'needs you to confirm');
-  else if (state.mood === 'error') logEvent(src, 'error', state.text || 'hit an error');
-  else if (state.mood === 'happy') logEvent(src, 'done', state.text || 'finished a task');
+  if (kind && !repeat) logEvent(src, kind, text);
 
   scheduleTrayRefresh();
 }
@@ -442,6 +494,31 @@ function recordStat(state) {
 // glance at the tray and see what happened while you were away.
 // ---------------------------------------------------------------------------
 const MAX_EVENTS = 8;
+
+const DEFAULT_EVENT_TEXT = {
+  confirm: 'needs you to confirm',
+  error: 'hit an error',
+  done: 'finished a task'
+};
+
+// An identical (source, kind, text) inside this window is treated as the same
+// event re-announced rather than a new one. Long enough to swallow Claude
+// Code's repeating "still waiting" notifications, short enough that genuinely
+// repeated work (two identical tool errors a minute apart) still both register.
+const EVENT_REPEAT_MS = 90000;
+
+function isRepeatEvent(source, kind, text) {
+  const events = store.get('events') || [];
+  const last = events[events.length - 1];
+  return !!(
+    last &&
+    last.source === source &&
+    last.kind === kind &&
+    last.text === String(text).slice(0, 120) &&
+    Date.now() - last.at < EVENT_REPEAT_MS
+  );
+}
+
 function logEvent(source, kind, text) {
   const events = (store.get('events') || []).slice(-(MAX_EVENTS - 1));
   events.push({ at: Date.now(), source, kind, text: String(text).slice(0, 120) });
@@ -498,6 +575,57 @@ function bumpLifetime() {
 // Fires from the async HTTP path (bumpLifetime), so guard against teardown.
 function notice(text) {
   if (win && !win.isDestroyed()) win.webContents.send('notice', text);
+}
+
+// ---------------------------------------------------------------------------
+// Native notification fallback. Hiding the pet (hotkey or tray) would otherwise
+// make the one moment that matters — a permission prompt — invisible: the
+// renderer still chimes, but there is nothing on screen to look at. When the pet
+// is hidden we hand the important states to the OS instead, and clicking the
+// notification brings the pet back (or jumps to the editor when we have a link).
+// ---------------------------------------------------------------------------
+function notifyWhenHidden(state) {
+  if (win && !win.isDestroyed() && win.isVisible()) return; // the pet itself is the notice
+  if (store.get('notifyWhenHidden') === false) return;
+  if (inQuietHours()) return;
+  if (!Notification.isSupported()) return;
+
+  const important = state.attention || state.mood === 'error';
+  if (!important) return;
+
+  const who = SOURCE_NAMES[(state.source || '').toLowerCase()] || state.source || 'AI';
+  const kind = state.attention ? 'confirm' : 'error';
+  const text = state.text || DEFAULT_EVENT_TEXT[kind];
+  // Same repeat window as the event log: a re-announced prompt shouldn't stack
+  // up notifications while you're away from the desk.
+  if (isRepeatEvent((state.source || '').toLowerCase().trim(), kind, text)) return;
+
+  const name = store.get('name');
+  const n = new Notification({
+    title: state.attention
+      ? `${who} needs you${name ? ` — ${name} is waiting` : ''}`
+      : `${who} hit an error`,
+    body: String(text).slice(0, 200),
+    silent: !!store.get('muted')
+  });
+  n.on('click', () => {
+    if (state.link) {
+      try {
+        if (ALLOWED_LINK_SCHEMES.has(new URL(state.link).protocol)) {
+          shell.openExternal(state.link);
+          return;
+        }
+      } catch {
+        /* not a usable link — fall through to showing the pet */
+      }
+    }
+    if (win && !win.isDestroyed()) {
+      win.show();
+      store.set('hidden', false);
+      buildTrayMenu();
+    }
+  });
+  n.show();
 }
 
 function fmtDur(ms) {
@@ -752,10 +880,25 @@ function focusLabel() {
   return `${focusState.phase === 'work' ? 'Focusing' : 'On break'} · ~${left}m — Stop`;
 }
 
-// Toggle a behavior flag stored as a boolean (wander / physics / timeOfDay).
+// Toggle a behavior flag stored as a boolean (wander / physics / timeOfDay /
+// notifyWhenHidden) — all of which default to on.
 function toggleFlag(key) {
-  const next = store.get(key) === false; // default-on flags
+  const next = store.get(key) === false;
   store.set(key, next);
+  pushSettings();
+  buildTrayMenu();
+}
+
+function quietLabel() {
+  const q = store.get('quiet') || {};
+  if (!q.enabled) return 'Quiet hours';
+  return `Quiet hours (${q.from}–${q.to})${inQuietHours() ? ' · on now' : ''}`;
+}
+
+function toggleQuiet() {
+  const q = { ...(store.get('quiet') || {}) };
+  q.enabled = !q.enabled;
+  store.set('quiet', q);
   pushSettings();
   buildTrayMenu();
 }
@@ -776,6 +919,161 @@ function registerHotkey() {
 }
 
 // ---------------------------------------------------------------------------
+// Auto-update. Only meaningful for a packaged build that was published with an
+// update channel (electron-builder writes app-update.yml into the bundle when
+// a `publish` target is configured — see "Releasing updates" in the README).
+// Loaded lazily so a dev run, or a build without the dependency, still boots.
+// ---------------------------------------------------------------------------
+let updaterChecking = false;
+// Set once an update has been downloaded and only needs a restart to apply.
+let updateReady = '';
+
+function canAutoUpdate() {
+  if (!app.isPackaged) return false;
+  try {
+    require.resolve('electron-updater');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function checkForUpdates({ interactive = false } = {}) {
+  if (!canAutoUpdate()) {
+    if (interactive) notice('updates only work in a packaged build');
+    return;
+  }
+  if (updaterChecking) return;
+
+  let autoUpdater;
+  try {
+    ({ autoUpdater } = require('electron-updater'));
+  } catch (err) {
+    console.error('[pet] updater unavailable:', err.message);
+    return;
+  }
+
+  updaterChecking = true;
+  // We tell the user ourselves, in the pet's own voice, rather than letting the
+  // updater pop native dialogs over whatever they're doing.
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.removeAllListeners();
+
+  autoUpdater.on('update-available', (info) => notice(`update ${info.version} downloading… ⬇️`));
+  autoUpdater.on('update-not-available', () => {
+    if (interactive) notice("you're up to date! ✨");
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    updateReady = info.version;
+    notice(`update ${info.version} ready — restart to apply 🎉`);
+    buildTrayMenu();
+  });
+  autoUpdater.on('error', (err) => {
+    updaterChecking = false;
+    console.error('[pet] update check failed:', err && err.message);
+    if (interactive) notice('could not check for updates 😞');
+  });
+
+  Promise.resolve(autoUpdater.checkForUpdates())
+    .catch((err) => {
+      console.error('[pet] update check failed:', err && err.message);
+      if (interactive) notice('no update channel configured');
+    })
+    .finally(() => {
+      updaterChecking = false;
+    });
+}
+
+function installUpdateAndRestart() {
+  try {
+    const { autoUpdater } = require('electron-updater');
+    store.flushNow();
+    autoUpdater.quitAndInstall();
+  } catch (err) {
+    console.error('[pet] could not install update:', err.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Activity window — the 7-day history and per-AI breakdown we already collect,
+// shown as an actual chart instead of a line of text in a tray submenu.
+// ---------------------------------------------------------------------------
+function openStats() {
+  if (statsWin && !statsWin.isDestroyed()) {
+    statsWin.show();
+    statsWin.focus();
+    return;
+  }
+  statsWin = new BrowserWindow({
+    width: 460,
+    height: 560,
+    resizable: true,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    title: 'Pet Activity',
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'stats-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  statsWin.loadFile(path.join(__dirname, 'renderer', 'stats.html'));
+  statsWin.once('ready-to-show', () => statsWin.show());
+  statsWin.on('closed', () => (statsWin = null));
+}
+
+// The full activity payload the stats window renders.
+function activityReport() {
+  const today = getStats();
+  const history = getWeekHistory();
+  // Fill in the days with no activity so the chart shows a real week, not just
+  // the days that happened to have events.
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const date = d.toLocaleDateString('en-CA');
+    const found = history.find((h) => h.date === date);
+    days.push({
+      date,
+      label: d.toLocaleDateString(undefined, { weekday: 'short' }),
+      tasks: found ? found.tasks || 0 : 0,
+      activeMs: found ? found.activeMs || 0 : 0
+    });
+  }
+  return {
+    days,
+    totals: weeklyTotals(),
+    perAi: Object.entries(today.perAi || {}).map(([src, a]) => ({
+      source: src,
+      name: SOURCE_NAMES[src] || src,
+      tasks: a.tasks || 0,
+      confirms: a.confirms || 0,
+      errors: a.errors || 0,
+      activeMs: a.activeMs || 0
+    })),
+    lifetimeTasks: store.get('lifetimeTasks') || 0,
+    events: (store.get('events') || []).slice().reverse().map((e) => ({
+      ...e,
+      name: SOURCE_NAMES[e.source] || e.source || 'AI',
+      ago: timeAgo(e.at)
+    }))
+  };
+}
+
+ipcMain.handle('stats:get', () => activityReport());
+
+// Push a refresh to an open stats window whenever the numbers move.
+function pushActivity() {
+  if (statsWin && !statsWin.isDestroyed()) {
+    statsWin.webContents.send('activity', activityReport());
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Settings window (name + color picker)
 // ---------------------------------------------------------------------------
 function openSettings() {
@@ -785,9 +1083,13 @@ function openSettings() {
     return;
   }
   settingsWin = new BrowserWindow({
-    width: 360,
-    height: 660,
-    resizable: false,
+    width: 380,
+    // Tall enough for the common case, and resizable/scrollable because the
+    // panel has grown well past what a fixed height can promise on every screen.
+    height: 760,
+    minWidth: 340,
+    minHeight: 400,
+    resizable: true,
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
@@ -822,42 +1124,177 @@ ipcMain.handle('settings:get', () => {
     muted: !!store.get('muted'),
     hotkey: store.get('hotkey') || '',
     stressTokens: Number(store.get('stressTokens')) || 0,
+    ctxMax: ctxMax(),
+    ctxMaxLocked: Number.isFinite(Number(process.env.PET_CTX_MAX)) && Number(process.env.PET_CTX_MAX) > 0,
+    notifyWhenHidden: store.get('notifyWhenHidden') !== false,
+    autoUpdate: store.get('autoUpdate') !== false,
+    canAutoUpdate: canAutoUpdate(),
+    quiet: { ...(store.get('quiet') || {}) },
+    sprite: spriteMeta(),
     token: store.get('token') || '',
+    port: serverPort || Number(store.get('port')) || PET_PORT,
+    serverError,
     focus: { work: f.work, break: f.break }
   };
 });
 
+// The settings window saves on every keystroke, so this handler must be cheap
+// and idempotent: only act on values that actually changed. Re-registering the
+// global hotkey or rebuilding the native tray menu once per typed character is
+// both wasteful and harmful — unregisterAll() leaves the shortcut dead for a
+// beat each time, and a taken accelerator would log a failure per keystroke.
+function setIfChanged(key, value) {
+  if (store.get(key) === value) return false;
+  store.set(key, value);
+  return true;
+}
+
 ipcMain.on('settings:set', (_e, cfg) => {
   if (!cfg || typeof cfg !== 'object') return;
-  if (typeof cfg.name === 'string') store.set('name', cfg.name.slice(0, 24));
-  if (typeof cfg.color === 'string' && PALETTE[cfg.color]) store.set('color', cfg.color);
-  if (typeof cfg.skin === 'string' && SKINS.includes(cfg.skin)) store.set('skin', cfg.skin);
+
+  let trayDirty = false;
+
+  if (typeof cfg.name === 'string') {
+    trayDirty = setIfChanged('name', cfg.name.slice(0, 24)) || trayDirty;
+  }
+  if (typeof cfg.color === 'string' && PALETTE[cfg.color]) setIfChanged('color', cfg.color);
+  if (typeof cfg.skin === 'string' && SKINS.includes(cfg.skin)) setIfChanged('skin', cfg.skin);
   // Only let the user equip a cosmetic they've actually unlocked.
   if (typeof cfg.cosmetic === 'string' && unlockedCosmetics().includes(cfg.cosmetic)) {
-    store.set('cosmetic', cfg.cosmetic);
+    setIfChanged('cosmetic', cfg.cosmetic);
   }
-  if (typeof cfg.timeOfDay === 'boolean') store.set('timeOfDay', cfg.timeOfDay);
-  if (typeof cfg.wander === 'boolean') store.set('wander', cfg.wander);
-  if (typeof cfg.physics === 'boolean') store.set('physics', cfg.physics);
-  if (typeof cfg.muted === 'boolean') store.set('muted', cfg.muted);
+  if (typeof cfg.timeOfDay === 'boolean') trayDirty = setIfChanged('timeOfDay', cfg.timeOfDay) || trayDirty;
+  if (typeof cfg.wander === 'boolean') trayDirty = setIfChanged('wander', cfg.wander) || trayDirty;
+  if (typeof cfg.physics === 'boolean') trayDirty = setIfChanged('physics', cfg.physics) || trayDirty;
+  if (typeof cfg.muted === 'boolean') trayDirty = setIfChanged('muted', cfg.muted) || trayDirty;
+  if (typeof cfg.notifyWhenHidden === 'boolean') {
+    trayDirty = setIfChanged('notifyWhenHidden', cfg.notifyWhenHidden) || trayDirty;
+  }
+  if (typeof cfg.autoUpdate === 'boolean') setIfChanged('autoUpdate', cfg.autoUpdate);
   if (typeof cfg.stressTokens === 'number' && cfg.stressTokens >= 0) {
-    store.set('stressTokens', Math.min(2e6, Math.round(cfg.stressTokens)));
+    setIfChanged('stressTokens', Math.min(2e6, Math.round(cfg.stressTokens)));
+  }
+  if (typeof cfg.ctxMax === 'number' && cfg.ctxMax > 0) {
+    setIfChanged('ctxMax', Math.min(1e7, Math.max(1000, Math.round(cfg.ctxMax))));
   }
   if (cfg.focus && typeof cfg.focus === 'object') {
-    store.set('focus', {
+    const next = {
       work: Math.max(1, Math.min(180, Number(cfg.focus.work) || 25)),
       break: Math.max(1, Math.min(60, Number(cfg.focus.break) || 5))
-    });
+    };
+    const cur = focusDurations();
+    if (cur.work !== next.work || cur.break !== next.break) store.set('focus', next);
   }
-  if (typeof cfg.hotkey === 'string') {
-    store.set('hotkey', cfg.hotkey.trim());
+  if (cfg.quiet && typeof cfg.quiet === 'object') {
+    const cur = store.get('quiet') || {};
+    const next = {
+      enabled: typeof cfg.quiet.enabled === 'boolean' ? cfg.quiet.enabled : !!cur.enabled,
+      // Reject an unparseable time rather than storing it — an empty or
+      // half-typed field would otherwise silently disable the whole window.
+      from: parseClock(cfg.quiet.from) != null ? String(cfg.quiet.from) : cur.from,
+      to: parseClock(cfg.quiet.to) != null ? String(cfg.quiet.to) : cur.to
+    };
+    if (cur.enabled !== next.enabled || cur.from !== next.from || cur.to !== next.to) {
+      store.set('quiet', next);
+      trayDirty = true;
+    }
+  }
+  if (typeof cfg.hotkey === 'string' && setIfChanged('hotkey', cfg.hotkey.trim())) {
     registerHotkey();
   }
-  if (typeof cfg.token === 'string') store.set('token', cfg.token.slice(0, 200));
+  if (typeof cfg.token === 'string') setIfChanged('token', cfg.token.slice(0, 200));
 
   pushSettings();
-  buildTrayMenu();
-  if (tray) tray.setToolTip(store.get('name') ? `${store.get('name')} — Desktop Pet` : 'Desktop Pet');
+  if (trayDirty) {
+    buildTrayMenu();
+    if (tray && !serverError) {
+      tray.setToolTip(store.get('name') ? `${store.get('name')} — Desktop Pet` : 'Desktop Pet');
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Sprite-sheet art. Previously this was config-file-only ("advanced"), which
+// meant a fully built feature nobody could find. The picked image is stored as
+// a data URI rather than a path: the renderer's CSP only allows same-origin
+// resources, and a packaged app can't write into its own read-only bundle.
+// ---------------------------------------------------------------------------
+const MAX_SPRITE_BYTES = 4 * 1024 * 1024;
+const SPRITE_MIME = { '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp' };
+
+// Rows map to moods top-to-bottom in this order; a sheet with fewer rows just
+// reuses the last one it has, so a 2-row sheet still animates every mood.
+const SPRITE_MOOD_ORDER = ['idle', 'thinking', 'working', 'happy', 'stressed', 'sleeping', 'error'];
+
+function spriteMoodMap(cols, rows) {
+  const moods = {};
+  SPRITE_MOOD_ORDER.forEach((mood, i) => {
+    moods[mood] = { row: Math.min(i, rows - 1), frames: cols };
+  });
+  return moods;
+}
+
+// Normalize whatever geometry the UI sent into a complete, safe sprite config.
+function buildSprite(url, geom = {}) {
+  const cols = Math.max(1, Math.min(64, Math.round(Number(geom.cols) || 1)));
+  const rows = Math.max(1, Math.min(64, Math.round(Number(geom.rows) || 1)));
+  const fps = Math.max(1, Math.min(60, Math.round(Number(geom.fps) || 8)));
+  return { url, cols, rows, fps, moods: spriteMoodMap(cols, rows) };
+}
+
+// What the Settings window needs to render — never the multi-megabyte data URI.
+function spriteMeta() {
+  const sp = spriteConfig();
+  if (!sp) return null;
+  return { cols: sp.cols, rows: sp.rows, fps: sp.fps, name: sp.name || 'sprite sheet' };
+}
+
+ipcMain.handle('settings:pickSprite', async () => {
+  const parent = settingsWin && !settingsWin.isDestroyed() ? settingsWin : undefined;
+  const res = await dialog.showOpenDialog(parent, {
+    title: 'Choose a sprite sheet',
+    properties: ['openFile'],
+    filters: [{ name: 'Sprite sheet', extensions: ['png', 'gif', 'webp'] }]
+  });
+  if (res.canceled || !res.filePaths.length) return { ok: false };
+
+  const file = res.filePaths[0];
+  const ext = path.extname(file).toLowerCase();
+  const mime = SPRITE_MIME[ext];
+  if (!mime) return { ok: false, error: 'unsupported image type' };
+
+  let buf;
+  try {
+    buf = require('fs').readFileSync(file);
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+  if (buf.length > MAX_SPRITE_BYTES) {
+    return { ok: false, error: 'sprite sheet is larger than 4 MB' };
+  }
+
+  const prev = spriteConfig() || {};
+  const sprite = buildSprite(`data:${mime};base64,${buf.toString('base64')}`, prev);
+  sprite.name = path.basename(file);
+  store.set('sprite', sprite);
+  pushSettings();
+  return { ok: true, sprite: spriteMeta() };
+});
+
+ipcMain.on('settings:setSprite', (_e, geom) => {
+  const sp = spriteConfig();
+  if (!sp || !geom || typeof geom !== 'object') return;
+  const next = buildSprite(sp.url, geom);
+  next.name = sp.name;
+  if (next.cols === sp.cols && next.rows === sp.rows && next.fps === sp.fps) return;
+  store.set('sprite', next);
+  pushSettings();
+});
+
+ipcMain.on('settings:clearSprite', () => {
+  if (!store.get('sprite')) return;
+  store.set('sprite', null);
+  pushSettings();
 });
 
 ipcMain.on('settings:close', () => {
@@ -882,6 +1319,16 @@ function buildTrayMenu() {
   const visible = win ? win.isVisible() : true;
   const menu = Menu.buildFromTemplate([
     { label: store.get('name') ? `🐾 ${store.get('name')}` : 'Desktop Pet', enabled: false },
+    // Connection status: without this, a server that never bound leaves the pet
+    // looking perfectly healthy while silently ignoring every AI event.
+    serverError
+      ? { label: `⚠️ offline — ${serverError}`, enabled: false }
+      : {
+          label: serverPort
+            ? `● listening on :${serverPort}${serverPort === PET_PORT ? '' : ' (fallback)'}`
+            : '○ starting…',
+          enabled: false
+        },
     { type: 'separator' },
     { label: visible ? 'Hide pet' : 'Show pet', click: togglePetVisible },
     { label: 'Wake / Poke', click: () => win && win.webContents.send('pet-click') },
@@ -897,6 +1344,7 @@ function buildTrayMenu() {
     { label: focusLabel(), click: toggleFocus },
     { label: 'Today', submenu: statsSubmenu() },
     { label: 'Recent', submenu: recentSubmenu() },
+    { label: 'Activity…', click: openStats },
     { label: 'Settings…', click: openSettings },
     {
       label: 'Behavior',
@@ -918,6 +1366,19 @@ function buildTrayMenu() {
           type: 'checkbox',
           checked: store.get('timeOfDay') !== false,
           click: () => toggleFlag('timeOfDay')
+        },
+        { type: 'separator' },
+        {
+          label: 'Notify when hidden',
+          type: 'checkbox',
+          checked: store.get('notifyWhenHidden') !== false,
+          click: () => toggleFlag('notifyWhenHidden')
+        },
+        {
+          label: quietLabel(),
+          type: 'checkbox',
+          checked: !!(store.get('quiet') || {}).enabled,
+          click: toggleQuiet
         }
       ]
     },
@@ -966,6 +1427,16 @@ function buildTrayMenu() {
       checked: !!store.get('launchAtLogin'),
       click: toggleLaunchAtLogin
     },
+    updateReady
+      ? {
+          label: `Restart to update to ${updateReady}`,
+          click: installUpdateAndRestart
+        }
+      : {
+          label: 'Check for updates…',
+          enabled: canAutoUpdate(),
+          click: () => checkForUpdates({ interactive: true })
+        },
     { type: 'separator' },
     { label: 'Quit', click: () => app.quit() }
   ]);
@@ -1007,6 +1478,9 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     store = createStore(app);
+    // Auth on by default: without a token the open CORS policy would let any
+    // web page you have loaded drive the pet. Must run before the server starts.
+    ensureToken();
 
     // Re-assert the login-item setting only when the user has opted in, so a
     // normal launch doesn't poke OS settings (or log a permission error).
@@ -1020,19 +1494,34 @@ if (!app.requestSingleInstanceLock()) {
     watchDisplays();
     scheduleWander();
 
+    // Look for a new release shortly after launch, once the app has settled.
+    if (store.get('autoUpdate') !== false) {
+      setTimeout(() => checkForUpdates({ interactive: false }), 8000);
+    }
+
     // Keep long-running sessions fresh: when the calendar day rolls over, the
     // renderer's "N today" line and the tray's Today submenu still show
     // yesterday until the next AI event — refresh them, and greet the new
     // morning. Also re-render the tray while a focus session is counting down
     // so its "~Nm — Stop" label stays roughly accurate.
     let lastSeenDate = todayStr();
+    let lastQuiet = inQuietHours();
     setInterval(() => {
       if (focusState && tray) buildTrayMenu();
+      // Quiet hours start and end on the clock, not on an event — tell the
+      // renderer the moment they flip so it stops (or resumes) making noise.
+      const quietNow = inQuietHours();
+      if (quietNow !== lastQuiet) {
+        lastQuiet = quietNow;
+        pushSettings();
+        if (tray) buildTrayMenu();
+      }
       const today = todayStr();
       if (today === lastSeenDate) return;
       lastSeenDate = today;
       pushDailyStats();
       pushWeeklyStats();
+      pushActivity();
       if (tray) buildTrayMenu();
       if (win && !win.isDestroyed() && win.isVisible()) sendMorningGreeting();
     }, 60000);
@@ -1042,12 +1531,38 @@ if (!app.requestSingleInstanceLock()) {
     startControlServer(
       PET_PORT,
       (state) => {
+        // Before recordStat, which appends to the event log the notification's
+        // own repeat-check reads — otherwise every event would look like a
+        // duplicate of itself and nothing would ever be announced.
+        notifyWhenHidden(state);
         recordStat(state);
         // This fires async from an HTTP request, which can land while the app
         // is quitting and the window is being torn down — guard accordingly.
         if (win && !win.isDestroyed()) win.webContents.send('ai-state', state);
       },
-      { getToken: () => store.get('token') || process.env.PET_TOKEN || '' }
+      {
+        getToken: () => store.get('token') || process.env.PET_TOKEN || '',
+        // Persist wherever we actually landed so the hook can find the pet even
+        // if 7337 was taken and the server fell back to another port.
+        onListen: (boundPort) => {
+          serverPort = boundPort;
+          if (store.get('port') !== boundPort) {
+            store.set('port', boundPort);
+            store.flushNow();
+          }
+          if (tray) buildTrayMenu();
+        },
+        // No socket at all means the pet will sit there looking healthy while
+        // reacting to nothing. Say so, loudly, in the two places the user looks.
+        onFatal: (err) => {
+          serverError = err.message;
+          if (tray) {
+            tray.setToolTip(`Desktop Pet — offline (${err.message})`);
+            buildTrayMenu();
+          }
+          notice("can't listen for AI events — see the tray 😞");
+        }
+      }
     );
 
     app.on('activate', () => {
