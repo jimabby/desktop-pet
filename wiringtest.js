@@ -117,6 +117,12 @@ require(path.resolve('src/main.js'));
   ok('settings:set stores notifyWhenHidden', after.notifyWhenHidden === false);
   ok('settings:set stores the hotkey', after.hotkey === 'CommandOrControl+Shift+J', after.hotkey);
 
+  for (const skin of ['kitten', 'puppy']) {
+    ok('settings offers ' + skin, cfg.skins.includes(skin));
+    set(null, { skin });
+    ok('settings saves ' + skin, (await ipcHandlers.get('settings:get')()).skin === skin);
+  }
+
   // An unparseable time must not wipe the stored one.
   set(null, { quiet: { enabled: true, from: '', to: '07:15' } });
   const after2 = await ipcHandlers.get('settings:get')();

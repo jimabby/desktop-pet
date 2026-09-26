@@ -33,13 +33,13 @@ function eq(name, actual, expected) {
 
 function request(port, path, json, headers = {}) {
   return new Promise((resolve, reject) => {
-    const body = json ? JSON.stringify(json) : '';
+    const body = json !== undefined ? JSON.stringify(json) : '';
     const req = http.request(
       {
         host: '127.0.0.1',
         port,
         path,
-        method: json ? 'POST' : 'GET',
+        method: json !== undefined ? 'POST' : 'GET',
         headers: {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(body),
@@ -85,6 +85,11 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   eq('GET /health body', health.body, '{"ok":true}');
 
   eq('unknown route is 404', (await request(PORT, '/nope')).status, 404);
+
+  for (const invalid of [null, [], 42, 'hello']) {
+    eq('reject non-object JSON ' + JSON.stringify(invalid),
+      (await request(PORT, '/state', invalid)).status, 400);
+  }
 
   await request(PORT, '/state', {
     mood: 'working', text: 'Refactoring auth', source: 'chatgpt', ttl: 8000

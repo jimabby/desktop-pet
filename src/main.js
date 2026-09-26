@@ -31,7 +31,7 @@ const PALETTE = {
   gray: ['#cfd6e0', '#9aa7b8']
 };
 
-const SKINS = ['slime', 'cat', 'ghost', 'bunny'];
+const SKINS = ['slime', 'cat', 'ghost', 'bunny', 'kitten', 'puppy'];
 
 // Cosmetics and the lifetime-task count needed to unlock each. 'none' is free.
 const COSMETIC_UNLOCKS = { none: 0, glasses: 10, headphones: 30, scarf: 50, crown: 120 };
@@ -1338,7 +1338,11 @@ function buildTrayMenu() {
         { label: '💃 Dance', click: () => doTrick('dance') },
         { label: '🤸 Backflip', click: () => doTrick('flip') },
         { label: '👋 Wave', click: () => doTrick('wave') },
-        { label: '🌀 Spin', click: () => doTrick('spin') }
+        { label: '🌀 Spin', click: () => doTrick('spin') },
+        { label: '🥱 Yawn & stretch', click: () => doTrick('yawn') },
+        { label: '👀 Curious tilt', click: () => doTrick('curious') },
+        { label: '🐾 Shake it off', click: () => doTrick('shake') },
+        { label: '💕 Blow a kiss', click: () => doTrick('kiss') }
       ]
     },
     { label: focusLabel(), click: toggleFocus },

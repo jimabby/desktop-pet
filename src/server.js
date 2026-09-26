@@ -121,6 +121,11 @@ function startControlServer(port, onState, opts = {}) {
           return res.end(JSON.stringify({ error: 'invalid json' }));
         }
 
+        if (!data || typeof data !== 'object' || Array.isArray(data)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'expected a JSON object' }));
+        }
+
         const state = {
           mood: VALID_MOODS.has(data.mood) ? data.mood : 'idle',
           text: typeof data.text === 'string' ? data.text.slice(0, 280) : '',

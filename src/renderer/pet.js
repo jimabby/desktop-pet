@@ -13,6 +13,7 @@ const dailyBar = document.getElementById('daily-bar');
 const dailyCount = document.getElementById('daily-count');
 const body = document.querySelector('.body');
 const pupils = document.querySelectorAll('.pupil');
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const focusPhonesEl = document.querySelector('.focus-phones');
 
 let storedDailyStats = null;
@@ -167,7 +168,7 @@ function updateCtxRing() {
 // Appearance (name, body color, skin shape, cosmetic, time-of-day) from settings.
 // ---------------------------------------------------------------------------
 let petName = '';
-const SKINS = ['slime', 'cat', 'ghost', 'bunny'];
+const SKINS = ['slime', 'cat', 'ghost', 'bunny', 'kitten', 'puppy'];
 const COSMETICS = ['none', 'glasses', 'scarf', 'headphones', 'crown'];
 let timeOfDayEnabled = true;
 
@@ -304,6 +305,7 @@ const FLOWER_GLYPHS = ['✿', '❀', '🌸', '🌺'];
 const GLYPHS = { heart: HEART_GLYPHS, sparkle: SPARKLE_GLYPHS, star: STAR_GLYPHS, note: NOTE_GLYPHS, flower: FLOWER_GLYPHS };
 
 function spawnParticle(type) {
+  if (reducedMotion.matches || document.hidden) return;
   const el = document.createElement('span');
   el.className = 'particle ' + type;
   const glyphs = GLYPHS[type] || SPARKLE_GLYPHS;
@@ -317,6 +319,7 @@ function spawnParticle(type) {
   el.style.animationDuration = 900 + Math.random() * 500 + 'ms';
   el.addEventListener('animationend', () => el.remove());
   particles.appendChild(el);
+  setTimeout(() => el.remove(), 1600); // also clean up when animations are disabled
 }
 
 function burst(type, count) {
@@ -333,7 +336,7 @@ function burst(type, count) {
 // cosmetic, focus glow, party hat, carry wobble, or the confirm-nudge bounce.
 const PERSISTENT_FLAGS = [
   'blink', 'attention', 'attention-strong', 'party',
-  'grabbed', 'rainbow', 'focusing', 'has-sprite',
+  'grabbed', 'rainbow', 'focusing', 'has-sprite', 'has-model',
   // The task-done flourish outlives the setMood() that triggers it.
   'big-celebrate'
 ];
@@ -378,6 +381,7 @@ function setSource(source) {
 
 function say(text, ms = 4000, link = '', linkText = '') {
   clearTimeout(bubbleTimer);
+  pendingLink = link || '';
   if (!text && !link) {
     bubble.classList.add('hidden');
     return;
@@ -385,7 +389,6 @@ function say(text, ms = 4000, link = '', linkText = '') {
   bubbleText.textContent = text || '';
 
   // Optional clickable link (e.g. "jump back to the editor to confirm").
-  pendingLink = link || '';
   if (pendingLink) {
     bubbleLink.textContent = linkText || 'Open →';
     bubbleLink.classList.remove('hidden');
@@ -415,7 +418,7 @@ function attention() {
   attentionTimer = setTimeout(() => {
     pet.classList.remove('attention');
     if (activeAis.size) renderFromActiveAis();
-    else setMood('idle');
+    else setMood(focusPhase === 'break' ? 'sleeping' : 'idle');
   }, 8000);
 }
 
@@ -482,6 +485,13 @@ function openPendingLink() {
   return true;
 }
 
+bubbleLink.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    openPendingLink();
+  }
+});
+
 bubbleLink.addEventListener('click', (e) => {
   e.stopPropagation();
   openPendingLink();
@@ -533,6 +543,7 @@ function renderFromActiveAis() {
   renderBadges();
   updateCtxRing();
   updateActivityBar();
+  if (confirmPending) return;
   if (activeAis.size === 0) {
     lastActiveClear = Date.now(); // sleep timer starts from here, not last hook event
     setSource('');
@@ -555,6 +566,7 @@ function renderFromActiveAis() {
 // Incoming AI state (from the local control server, via main process)
 // ---------------------------------------------------------------------------
 window.petAPI.onAiState((state) => {
+  cancelReaction();
   lastInteraction = Date.now();
   const source = normalizeSource(state.source);
   const goingIdle = state.mood === 'idle';
@@ -669,6 +681,7 @@ function showFocusPhones(show) {
 }
 
 window.petAPI.onFocus((f) => {
+  cancelReaction();
   focusPhase = f && f.phase ? f.phase : null;
   lastInteraction = Date.now();
   if (focusPhase === 'work') {
@@ -720,6 +733,7 @@ let pokeStreak = 0;
 let pokeStreakTimer = null;
 
 function react() {
+  cancelReaction();
   lastInteraction = Date.now();
 
   // A poke acknowledges a waiting confirm — it stops the pet pestering you —
@@ -761,7 +775,7 @@ function react() {
   happyResetTimer = setTimeout(() => {
     pet.classList.remove('act-wiggle');
     if (activeAis.size) renderFromActiveAis();
-    else setMood('idle');
+    else setMood(focusPhase === 'break' ? 'sleeping' : 'idle');
   }, 1500);
 }
 
@@ -785,8 +799,9 @@ window.petAPI.onClick(() => react());
 const DBL_LINES = ['wheee!', 'spinny!', 'again again!', '★彡', 'dizzy~ 🌀'];
 zone.addEventListener('dblclick', (e) => {
   e.preventDefault();
+  if (confirmPending || pendingLink || pet.classList.contains('grabbed')) return;
   lastInteraction = Date.now();
-  clearTimeout(happyResetTimer);
+  cancelReaction();
   pet.classList.remove(...ACT_CLASSES);
   void pet.offsetWidth;
   pet.classList.add('act-spin');
@@ -796,7 +811,7 @@ zone.addEventListener('dblclick', (e) => {
   happyResetTimer = setTimeout(() => {
     pet.classList.remove('act-spin');
     if (activeAis.size) renderFromActiveAis();
-    else setMood('idle');
+    else setMood(focusPhase === 'break' ? 'sleeping' : 'idle');
   }, 1500);
 });
 
@@ -826,6 +841,7 @@ window.addEventListener('keydown', (e) => {
 // ---------------------------------------------------------------------------
 const CARRY_LINES = ['wheee~', 'whooaa!', 'flying! 🛸', 'where to?', '*giggles*'];
 window.petAPI.onGrab(() => {
+  cancelReaction();
   lastInteraction = Date.now();
   clearTimeout(happyResetTimer);
   pet.classList.remove(...ACT_CLASSES);
@@ -845,7 +861,7 @@ window.petAPI.onDrop(() => {
   happyResetTimer = setTimeout(() => {
     pet.classList.remove('act-stretch');
     if (activeAis.size) renderFromActiveAis();
-    else setMood('idle');
+    else setMood(focusPhase === 'break' ? 'sleeping' : 'idle');
   }, 900);
 });
 
@@ -853,8 +869,13 @@ window.petAPI.onDrop(() => {
 // Tricks — perform on demand (tray ▸ Tricks, or a wave hello when shown). Each
 // is a CSS act-* class played briefly with a matching line + little flourish.
 // ---------------------------------------------------------------------------
-const TRICK_ACT = { dance: 'act-dance', flip: 'act-flip', wave: 'act-wave', spin: 'act-spin' };
+const TRICK_ACT = { dance: 'act-dance', flip: 'act-flip', wave: 'act-wave', spin: 'act-spin',
+  yawn: 'act-yawn', curious: 'act-curious', shake: 'act-shake', kiss: 'act-kiss' };
 const TRICK_LINES = {
+  yawn: ['*yaaawn*', 'big stretch~'],
+  curious: ['what’s that?', 'hmm? 👀'],
+  shake: ['*shake shake*', 'all fluffed up!'],
+  kiss: ['mwah! ♥', 'a little love for you~'],
   dance: ['💃 woo!', '~ ♪ ~', 'dance party!', 'feel the beat!'],
   flip: ['hup!', 'ta-da! 🤸', 'nailed it!', 'did you see that?!'],
   wave: ['hi there!', 'hellooo~', 'hey you! 👋', '*waves*'],
@@ -862,6 +883,8 @@ const TRICK_LINES = {
 };
 
 function playTrick(name) {
+  if (confirmPending || pendingLink || pet.classList.contains('grabbed')) return;
+  cancelReaction();
   if (!TRICK_ACT[name]) name = 'dance';
   lastInteraction = Date.now();
   clearTimeout(happyResetTimer);
@@ -871,13 +894,13 @@ function playTrick(name) {
   setMood('happy', { silent: true });
   void pet.offsetWidth; // restart so a repeat trick re-triggers
   pet.classList.add(TRICK_ACT[name]);
-  burst(name === 'dance' ? 'note' : 'sparkle', name === 'flip' ? 6 : 4);
+  burst(name === 'kiss' ? 'heart' : name === 'dance' ? 'note' : 'sparkle', name === 'flip' ? 6 : 4);
   const lines = TRICK_LINES[name];
   say(lines[(Math.random() * lines.length) | 0], 1800);
   happyResetTimer = setTimeout(() => {
     pet.classList.remove(TRICK_ACT[name]);
     if (activeAis.size) renderFromActiveAis();
-    else setMood('idle');
+    else setMood(focusPhase === 'break' ? 'sleeping' : 'idle');
   }, name === 'flip' ? 1000 : 1700);
 }
 window.petAPI.onTrick((name) => playTrick(name));
@@ -965,7 +988,8 @@ function cancelTickleDwell() {
 }
 function maybeTickle() {
   if (!interactiveNow || tickledThisHover) return;
-  if (confirmPending || activeAis.size) return; // stay out of the way
+  if (confirmPending || activeAis.size || focusPhase || pet.classList.contains('grabbed')) return; // stay out of the way
+  cancelReaction();
   tickledThisHover = true;
   lastInteraction = Date.now();
   if (currentMood === 'sleeping') setMood('idle'); // hovering gently wakes it
@@ -973,7 +997,10 @@ function maybeTickle() {
   pet.classList.remove(...ACT_CLASSES);
   void pet.offsetWidth;
   pet.classList.add('act-wiggle');
-  setTimeout(() => pet.classList.remove('act-wiggle'), 700);
+  idleActionTimer = setTimeout(() => {
+    pet.classList.remove('act-wiggle');
+    idleActionTimer = null;
+  }, 700);
   say(TICKLE_LINES[(Math.random() * TICKLE_LINES.length) | 0], 1400);
 }
 
@@ -1015,20 +1042,34 @@ setTimeout(blink, 2000);
 const IDLE_LINES = ['hmm~', 'la la la~', '*yawn*', 'still here!', 'boop?', '~ ♪', 'so quiet...'];
 const ACT_CLASSES = [
   'act-hop', 'act-wiggle', 'act-spin', 'act-stretch', 'act-look',
-  'act-dance', 'act-flip', 'act-wave'
+  'act-dance', 'act-flip', 'act-wave', 'act-yawn', 'act-curious', 'act-shake', 'act-kiss'
 ];
 
+let idleActionTimer = null;
+let lastIdleAction = '';
+function cancelReaction() {
+  clearTimeout(happyResetTimer);
+  clearTimeout(idleActionTimer);
+  idleActionTimer = null;
+  pet.classList.remove(...ACT_CLASSES);
+}
+
+function performIdleAction(action, duration = 1700) {
+  cancelReaction();
+  lastIdleAction = action;
+  pet.classList.add('act-' + action);
+  idleActionTimer = setTimeout(() => {
+    pet.classList.remove('act-' + action);
+    idleActionTimer = null;
+  }, duration);
+}
+
 function doIdleAction() {
-  const r = Math.random();
-  let action;
-  if (r < 0.24) action = 'hop';
-  else if (r < 0.42) action = 'wiggle';
-  else if (r < 0.57) action = 'look';
-  else if (r < 0.71) action = 'stretch';
-  else if (r < 0.81) action = 'chatter';
-  else if (r < 0.9) action = 'sparkle';
-  else if (r < 0.96) action = 'spin';
-  else action = 'dance';
+  const choices = ['hop', 'wiggle', 'look', 'stretch', 'chatter', 'sparkle',
+    'curious', 'curious', 'shake', 'kiss'];
+  const pool = choices.filter((action) => action !== lastIdleAction);
+  const action = pool[Math.floor(Math.random() * pool.length)];
+  lastIdleAction = action;
 
   if (action === 'chatter') {
     let line = IDLE_LINES[(Math.random() * IDLE_LINES.length) | 0];
@@ -1044,23 +1085,14 @@ function doIdleAction() {
     return;
   }
 
-  // A spontaneous little dance — reuse the full trick so it feels alive.
-  if (action === 'dance') {
-    playTrick('dance');
-    return;
-  }
-
-  // Clear any leftover action class, then play the new one.
-  pet.classList.remove(...ACT_CLASSES);
-  const cls = 'act-' + action;
-  pet.classList.add(cls);
-  setTimeout(() => pet.classList.remove(cls), 1300);
+  performIdleAction(action);
 }
 
 // Idle loop: random little actions + fall asleep when left alone.
 const SLEEP_AFTER_MS = 30000;
 setInterval(() => {
-  if (activeAis.size) return;
+  if (activeAis.size || confirmPending || pendingLink || document.hidden ||
+      pet.classList.contains('grabbed')) return;
   // During a focus work block the pet stays awake and attentive; on a break it
   // is already napping and shouldn't be nudged out of it by idle actions.
   if (focusPhase) return;
@@ -1072,6 +1104,7 @@ setInterval(() => {
 
   if (idleFor > SLEEP_AFTER_MS) {
     if (currentMood !== 'sleeping') {
+      cancelReaction();
       setMood('sleeping');
       say('');
     }
@@ -1080,11 +1113,19 @@ setInterval(() => {
 
   if (currentMood === 'sleeping') setMood('idle');
 
+  if (!quiet && !reducedMotion.matches && idleFor > SLEEP_AFTER_MS - 4000 && currentMood === 'idle') {
+    if (lastIdleAction !== 'yawn') performIdleAction('yawn', 3000);
+    return;
+  }
+  if (idleActionTimer || quiet || reducedMotion.matches) return;
+
   // ~1 in 4 chance of a little idle action each tick
   if (currentMood === 'idle' && Math.random() < 0.25) {
     doIdleAction();
   }
 }, 1500);
+
+pet.addEventListener('model-error', () => say('3D unavailable — showing drawn pet', 5000));
 
 // Wake on any local interaction handled above; start idle.
 setMood('idle');

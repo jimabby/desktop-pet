@@ -1,0 +1,18 @@
+/* The Blender layer shares the same mood/action classes as the drawn pet. */
+.model-view { display: none; position: absolute; width: 160px; height: 160px; left: -25px; bottom: -8px; z-index: 1; pointer-events: none; }
+.model-view canvas { display: block; width: 100%; height: 100%; }
+.has-model:not(.has-sprite) > .model-view { display: block; }
+#pet.has-model:not(.has-sprite) > :is(.body,.arm,.foot,.ear,.bunny-ear,.sprout,.blanket) { display: none; }
+/* Overlays remain legible above the 3D canvas. */
+#pet.has-model > .zzz { z-index: 4; }
+#pet.has-model .shadow { width: 75px; opacity: .7; }
+#pet.has-model .glasses { top: 25px; }
+#pet.has-model .crown { top: -18px; }
+#pet.has-model .scarf { top: 70px; }
+#pet.has-model .hat { top: -24px; }
+#pet.has-model[class*='source-'] .model-view { filter: drop-shadow(0 0 4px rgba(123, 153, 245, .45)); }
+.model-preview { display: none; position: relative; width: 110px; height: 135px; }
+.model-preview .model-view { bottom: -7px; }
+.model-preview.has-model { display: block; }
+.preview:has(.model-preview.has-model) .blob { display: none; }
+.model-hint { margin-top: 6px; }

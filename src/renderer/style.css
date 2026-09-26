@@ -1342,3 +1342,58 @@ body {
     animation: none !important;
   }
 }
+
+/* Gestures have anticipation, a held expression, and a soft recovery. */
+#pet.act-yawn { animation: gesture-yawn 1.7s ease-in-out; transform-origin: 50% 90%; }
+#pet.act-yawn .eye { height: 5px; top: 39px; }
+#pet.act-yawn .mouth { width: 13px; height: 17px; border: 0; background: #355346; border-radius: 50%; }
+#pet.act-yawn .arm.left { transform: rotate(-65deg); }
+#pet.act-yawn .arm.right { transform: rotate(65deg); }
+#pet.act-curious { animation: gesture-curious 1.7s ease-in-out; transform-origin: 50% 90%; }
+#pet.act-curious .eye.right { height: 21px; top: 30px; }
+#pet.act-curious .mouth { width: 7px; height: 7px; border-radius: 50%; }
+#pet.act-shake { animation: gesture-shake 1.2s ease-in-out; transform-origin: 50% 85%; }
+#pet.act-shake .arm.left { animation: arm-wave-l .18s ease-in-out 6; }
+#pet.act-shake .arm.right { animation: arm-wave-r .18s ease-in-out 6; }
+#pet.act-kiss { animation: gesture-kiss 1.7s ease-in-out; transform-origin: 50% 90%; }
+#pet.act-kiss .eye { height: 5px; top: 39px; border-radius: 8px; }
+#pet.act-kiss .mouth { width: 9px; height: 8px; border: 2px solid #b95778; border-radius: 50%; background: #e8a0b7; }
+#pet.act-kiss .blush { opacity: 1; }
+#pet.act-kiss .arm.right { animation: arm-wave-r .65s ease-in-out 2; }
+#pet.act-curious .ear.right { transform: rotate(34deg); }
+#pet.act-curious .bunny-ear.right { animation: none; transform: rotate(30deg); }
+#pet.act-shake .bunny-ear { animation: gesture-ear .3s ease-in-out 4; }
+@keyframes gesture-yawn {
+  0%, 100% { transform: scale(1); }
+  15% { transform: scale(1.07, .92); }
+  45%, 65% { transform: scale(.92, 1.1) rotate(-3deg); }
+  85% { transform: scale(1.04, .97); }
+}
+@keyframes gesture-curious {
+  0%, 100% { transform: rotate(0); }
+  20% { transform: rotate(-4deg); }
+  45%, 75% { transform: rotate(12deg) translateY(-2px); }
+}
+@keyframes gesture-shake {
+  0%, 100% { transform: rotate(0) scale(1); }
+  15% { transform: scale(1.08, .9); }
+  30%, 50%, 70% { transform: rotate(-7deg); }
+  40%, 60% { transform: rotate(7deg); }
+  85% { transform: rotate(2deg) scale(.98, 1.03); }
+}
+@keyframes gesture-kiss {
+  0%, 100% { transform: scale(1); }
+  25% { transform: scale(.96, 1.04) rotate(-4deg); }
+  50%, 70% { transform: translateY(-3px) scale(1.06) rotate(5deg); }
+}
+@keyframes gesture-ear {
+  0%, 100% { transform: rotate(-10deg); }
+  50% { transform: rotate(22deg); }
+}
+/* Cover all states, gestures and future decorations, including pseudo-elements. */
+@media (prefers-reduced-motion: reduce) {
+  #pet, #pet *, #pet::before, #pet *::before, #pet *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

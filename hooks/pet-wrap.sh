@@ -10,7 +10,7 @@
 set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-notify="node $here/pet-notify.js"
+notify=(node "$here/pet-notify.js")
 
 if [ "$#" -eq 0 ]; then
   echo "usage: pet-wrap.sh <command> [args...]" >&2
@@ -18,15 +18,15 @@ if [ "$#" -eq 0 ]; then
 fi
 
 # Never let a missing/broken pet take the real command down with it.
-$notify working "$*" >/dev/null 2>&1 || true
+"${notify[@]}" working "$*" >/dev/null 2>&1 || true
 
 "$@"
 code=$?
 
 if [ "$code" -eq 0 ]; then
-  $notify done "$* ✓" >/dev/null 2>&1 || true
+  "${notify[@]}" done "$* ✓" >/dev/null 2>&1 || true
 else
-  $notify error "$* failed ($code)" >/dev/null 2>&1 || true
+  "${notify[@]}" error "$* failed ($code)" >/dev/null 2>&1 || true
 fi
 
 exit "$code"

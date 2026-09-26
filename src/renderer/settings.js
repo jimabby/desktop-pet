@@ -9,13 +9,17 @@ const lifetimeEl = $('lifetime');
 const previewBlob = $('preview-blob');
 const previewName = $('preview-name');
 
+$('model-preview').addEventListener('model-error', () => {
+  $('model-hint').textContent = '3D preview could not load. The drawn pet is still available; try reopening Settings.';
+});
+
 let cfg = {};
 let palette = {};
 let selectedColor = 'green';
 let selectedSkin = 'slime';
 let selectedCosmetic = 'none';
 
-const SKIN_LABELS = { slime: 'Slime', cat: 'Cat', ghost: 'Ghost', bunny: 'Bunny' };
+const SKIN_LABELS = { slime: 'Slime', cat: 'Cat', ghost: 'Ghost', bunny: 'Bunny', kitten: 'Kitten 3D · 小猫', puppy: 'Puppy 3D · 小狗' };
 const COSMETIC_LABELS = {
   none: 'None', glasses: 'Glasses', scarf: 'Scarf', headphones: 'Headphones', crown: 'Crown'
 };
@@ -45,6 +49,11 @@ function makePressable(el, onPress, { disabled = false, selected = false } = {})
 function renderPreview() {
   const stops = palette[selectedColor];
   if (stops) previewBlob.style.background = blobGradient(stops);
+  const modelPreview = $('model-preview');
+  for (const skin of ['kitten', 'puppy']) modelPreview.classList.toggle('skin-' + skin, selectedSkin === skin);
+  $('model-hint').textContent = ['kitten', 'puppy'].includes(selectedSkin)
+    ? 'Blender 3D character · natural fur colors; use Tricks to wave, dance and play. Custom sprite art overrides the desktop character: choose Use drawn pet below to show 3D.'
+    : 'Kitten 3D / Puppy 3D: articulated Blender characters with moving ears, paws and tails.';
   previewName.textContent = nameInput.value.trim() || 'your companion';
 }
 
@@ -75,6 +84,7 @@ function renderSkins() {
     makePressable(chip, () => {
       selectedSkin = key;
       renderSkins();
+      renderPreview();
       save();
     }, { selected: key === selectedSkin });
     skinsEl.appendChild(chip);

@@ -18,3 +18,9 @@ pet-config.json
 
 # local tooling / scratch
 .playwright-mcp/
+
+# Generated local 3D renderer bundle
+src/renderer/pet3d.bundle.js
+src/renderer/pet3d.bundle.js.LEGAL.txt
+assets/blender/*.blend1
+__pycache__/

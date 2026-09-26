@@ -122,12 +122,14 @@
         background: #fff;
       }
     </style>
+    <link rel="stylesheet" href="models.css" />
   </head>
   <body>
     <h1>🐾 Pet settings</h1>
 
     <div class="preview">
       <div class="blob" id="preview-blob"></div>
+      <div id="model-preview" class="model-preview mood-idle"><div class="model-view" data-model-view aria-hidden="true"></div></div>
       <span id="preview-name">your companion</span>
     </div>
 
@@ -145,6 +147,7 @@
     <div class="field">
       <label>Skin</label>
       <div class="chips" id="skins"></div>
+      <div class="hint model-hint" id="model-hint">Kitten 3D / Puppy 3D: articulated Blender characters with moving ears, paws and tails.</div>
     </div>
     <div class="field">
       <label>Cosmetic <span id="lifetime" class="hint"></span></label>
@@ -259,6 +262,7 @@
       <button id="done">Done</button>
     </div>
 
+    <script src="pet3d.bundle.js"></script>
     <script src="settings.js"></script>
   </body>
 </html>

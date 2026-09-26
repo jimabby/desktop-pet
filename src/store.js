@@ -18,7 +18,7 @@ function createStore(app) {
     hidden: false,
     name: '',
     color: 'green',
-    skin: 'slime', // body shape: slime | cat | ghost | bunny
+    skin: 'slime', // character: slime | cat | ghost | bunny | kitten | puppy
     cosmetic: 'none', // equipped headwear: none | glasses | scarf | headphones | crown
     timeOfDay: true, // tint the pet warmer at night / brighter by day
     wander: true, // let the pet stroll a few px on its own when idle

@@ -2,8 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline';" />
     <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="models.css" />
   </head>
   <body>
     <!-- Only #pet-zone captures the mouse; everything else is click-through. -->
@@ -16,6 +17,7 @@
       <div id="pet-zone">
         <div id="pet" class="mood-idle">
           <div class="shadow"></div>
+          <div class="model-view" data-model-view aria-hidden="true"></div>
           <div id="ai-badges" class="ai-badges hidden" aria-hidden="true"></div>
           <!-- floating hearts / sparkles spawn here (pointer-events: none) -->
           <div id="particles" class="particles" aria-hidden="true"></div>
@@ -85,6 +87,7 @@
       </div>
     </div>
 
+    <script src="pet3d.bundle.js"></script>
     <script src="pet.js"></script>
   </body>
 </html>

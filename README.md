@@ -5,8 +5,8 @@ It floats on top of your screen, you can drag/poke/chat with it, and it **reacts
 when an AI assistant (Claude, ChatGPT, Gemini, DeepSeek, Copilot, Cursor, Ollama, …)
 is working**.
 
-> v1 uses a simple CSS slime as placeholder art. Swap in sprite sheets later
-> without touching any of the behavior code.
+> The built-in CSS character has expressive gestures and four skins. You can also
+> load a sprite sheet from Settings.
 
 ## Features
 
@@ -25,7 +25,8 @@ is working**.
 - **Unlockable cosmetics** — earn **glasses**, a **scarf**, **headphones**, and a
   **crown** by racking up completed tasks, then equip them in Settings
 - **Tricks on demand** — from the tray's **Tricks** menu make the pet **dance**
-  (with music notes 🎵), **backflip**, **wave**, or **spin**
+  (with music notes 🎵), **backflip**, **wave**, **spin**, **yawn & stretch**,
+  **curious tilt**, **shake it off**, or **blow a kiss**
 - **Hover to tickle** — rest your cursor on the pet (no click) and it giggles
 - **Waves hello** — it waves when it first appears or when you summon it back
 - **Time-of-day tint** — warmer/dimmer at night, brighter midday
@@ -38,7 +39,8 @@ is working**.
   **arms** and stubby **feet**, glossy eyes, a drifting body shine, ambient sparkles
 - **Speech bubbles** — including a **"done · 2m 13s"** note showing how long the
   AI's last task took
-- **Idle behaviors**: blinking, little hops, sparkles, falls asleep when ignored
+- **Idle behaviors**: blinking, little hops, curious tilts, shakes and kisses,
+  without repeating the last idle action; yawns before falling asleep when ignored
 - **Respects "reduce motion"** — calms its looping animations if your OS asks
 - **Per-AI tint + badges** — a colored glow and badges show which assistant is driving it
 - **Multi-AI mode** — if Claude, ChatGPT, Gemini, etc. are active together, the pet switches into a team-up bounce
@@ -101,7 +103,7 @@ Open **Settings…** from the tray (or **right-click the pet**). The window cove
 
 - **Name** — it'll introduce itself now and then, and the name shows in the tray
 - **Color** — pick a body color from a palette
-- **Skin** — slime, cat, ghost, or bunny
+- **Skin** — slime, cat, ghost, bunny, Kitten 3D, or Puppy 3D
 - **Cosmetic** — equip any headwear you've unlocked (locked ones show how many
   completed tasks they need: glasses at 10, headphones at 30, scarf at 50, crown
   at 120)
@@ -234,8 +236,8 @@ environment Claude Code runs in too.
 **Confirm / permission prompts.** When Claude needs your approval to run a tool
 it fires a **`PermissionRequest`** event (idle/other notices use `Notification`);
 the pet handles both — it bounces with a `!` badge, chimes, and shows the message
-plus an **"Open editor →"** link. Clicking the link — or just poking the pet —
-focuses your editor on the project so you can answer. Make sure the
+plus an **"Open editor →"** link. Clicking the link focuses your editor on the project so you can answer.
+Poking the pet only dismisses its reminder. Make sure the
 `PermissionRequest` hook from the example is in your settings (older setups that
 only wired up `Notification` won't react to permission prompts). The link is
 auto-built from the project path and editor:
@@ -257,8 +259,8 @@ exists while the model is streaming) and pings the pet for you.
    [Violentmonkey](https://violentmonkey.github.io/) in your browser.
 2. Create a new script and paste in
    [hooks/pet-userscript.user.js](hooks/pet-userscript.user.js).
-3. (Only if you launched the pet with `PET_TOKEN`) set the same value in the
-   `TOKEN` constant at the top of the script.
+3. Copy the control-server token from **Settings ▸ Advanced** into the
+   `TOKEN` constant at the top of the script (or use your `PET_TOKEN` override).
 
 Now ChatGPT and Gemini drive the pet automatically: it shows that AI's tint +
 badge while a response streams and cheers when it's done. The script is scoped
@@ -519,3 +521,33 @@ spctl -a -vvv -t install "dist/Desktop Pet-0.1.0.dmg"   # → "accepted / source
 If the cert lives in a `.p12` file instead of the keychain (e.g. CI), point
 electron-builder at it with `CSC_LINK=/path/to/cert.p12` and
 `CSC_KEY_PASSWORD=…` instead of relying on keychain discovery.
+
+
+## Blender characters: Kitten 3D / Puppy 3D
+
+Run `npm start`, right-click the pet, then choose **Settings → Appearance →
+Kitten 3D / Puppy 3D**. The selection is saved. Settings shows a live 3D preview.
+If a custom sprite sheet is active, choose **Sprite art → Use drawn pet** to
+reveal the 3D character. These two characters have their own natural fur colors;
+the existing color palette applies to the CSS characters.
+
+These are original Blender models with 18 bones each: torso, head, jaw, eyes,
+independent ears, four legs, four paws and a two-part tail, plus the root.
+They contain 11 animation clips: idle, working, happy, sleeping, wave, dance,
+curious, shake, yawn, kiss and grabbed. Use the tray's **Tricks** menu to try them.
+Cursor head tracking and blinking layer over the animations. Existing spin and
+backflip effects move the whole character. Reduced motion uses a still pose;
+hidden windows stop rendering. If WebGL/model loading fails, the drawn pet remains.
+
+- Editable sources: `assets/blender/kitten.blend`, `assets/blender/puppy.blend`
+- Packaged models: `src/renderer/models/*.glb`
+- Reproducible model generator: `scripts/create-animals.py`
+- Renderer: `src/renderer/pet3d.js` (Three.js, bundled locally)
+
+Blender is only needed to edit/regenerate art. The desktop pet renders the GLB
+files directly and works offline. `npm start` and `npm run dist*` build the
+renderer bundle automatically. After source changes, use `npm run build:3d`.
+
+See [the Blender asset notes](assets/blender/README.md) for regeneration and
+editing instructions. Run `npm run test:3d` for GLB joint/animation checks and
+an isolated Electron/WebGL smoke test, including live Settings previews.
