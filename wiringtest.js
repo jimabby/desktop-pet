@@ -123,6 +123,17 @@ require(path.resolve('src/main.js'));
     ok('settings saves ' + skin, (await ipcHandlers.get('settings:get')()).skin === skin);
   }
 
+  for (const color of ['natural', 'peach', 'cream', 'cocoa', 'pink']) {
+    set(null, { color });
+    ok('settings saves color ' + color, (await ipcHandlers.get('settings:get')()).color === color);
+  }
+  for (const cosmetic of ['bowtie', 'flower']) {
+    set(null, { cosmetic });
+    ok('free cosmetic can be equipped: ' + cosmetic, (await ipcHandlers.get('settings:get')()).cosmetic === cosmetic);
+  }
+  set(null, { cosmetic: 'crown' });
+  ok('locked cosmetics cannot be equipped', (await ipcHandlers.get('settings:get')()).cosmetic === 'flower');
+
   // An unparseable time must not wipe the stored one.
   set(null, { quiet: { enabled: true, from: '', to: '07:15' } });
   const after2 = await ipcHandlers.get('settings:get')();

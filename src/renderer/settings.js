@@ -19,9 +19,9 @@ let selectedColor = 'green';
 let selectedSkin = 'slime';
 let selectedCosmetic = 'none';
 
-const SKIN_LABELS = { slime: 'Slime', cat: 'Cat', ghost: 'Ghost', bunny: 'Bunny', kitten: 'Kitten 3D · 小猫', puppy: 'Puppy 3D · 小狗' };
+const SKIN_LABELS = { slime: 'Slime', kitten: 'Kitten 3D · 小猫', puppy: 'Puppy 3D · 小狗' };
 const COSMETIC_LABELS = {
-  none: 'None', glasses: 'Glasses', scarf: 'Scarf', headphones: 'Headphones', crown: 'Crown'
+  none: 'None', glasses: 'Glasses', scarf: 'Scarf', headphones: 'Headphones', crown: 'Crown', bowtie: 'Bow tie', flower: 'Flower', cap: 'Cap'
 };
 
 function blobGradient(stops) {
@@ -50,9 +50,14 @@ function renderPreview() {
   const stops = palette[selectedColor];
   if (stops) previewBlob.style.background = blobGradient(stops);
   const modelPreview = $('model-preview');
+  modelPreview.style.setProperty('--model-fur', selectedColor === 'natural' ? 'natural' : stops?.[0] || 'natural');
+  for (const cosmetic of Object.keys(COSMETIC_LABELS)) {
+    modelPreview.classList.toggle('cosmetic-' + cosmetic, selectedCosmetic === cosmetic);
+    previewBlob.classList.toggle('cosmetic-' + cosmetic, selectedCosmetic === cosmetic);
+  }
   for (const skin of ['kitten', 'puppy']) modelPreview.classList.toggle('skin-' + skin, selectedSkin === skin);
   $('model-hint').textContent = ['kitten', 'puppy'].includes(selectedSkin)
-    ? 'Blender 3D character · natural fur colors; use Tricks to wave, dance and play. Custom sprite art overrides the desktop character: choose Use drawn pet below to show 3D.'
+    ? 'Colors tint the fur; Natural restores the original coat. Accessories follow the character as it moves. Custom sprite art overrides the desktop character.'
     : 'Kitten 3D / Puppy 3D: articulated Blender characters with moving ears, paws and tails.';
   previewName.textContent = nameInput.value.trim() || 'your companion';
 }
@@ -110,6 +115,7 @@ function renderCosmetics() {
     makePressable(chip, () => {
       selectedCosmetic = key;
       renderCosmetics();
+      renderPreview();
       save();
     }, { disabled: !isUnlocked, selected: key === selectedCosmetic });
     cosmeticsEl.appendChild(chip);
@@ -205,7 +211,7 @@ $('done').addEventListener('click', () => window.settingsAPI.close());
   palette = cfg.palette || {};
   selectedColor = cfg.color && palette[cfg.color] ? cfg.color : Object.keys(palette)[0];
   selectedSkin = cfg.skin || 'slime';
-  selectedCosmetic = cfg.cosmetic || 'none';
+  selectedCosmetic = (cfg.unlocked || ['none']).includes(cfg.cosmetic) ? cfg.cosmetic : 'none';
 
   nameInput.value = cfg.name || '';
   $('sound').checked = !cfg.muted;

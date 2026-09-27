@@ -154,7 +154,7 @@ def build(kind):
         mod = o.modifiers.new('Articulated','ARMATURE'); mod.object=arm
         o.parent = arm
     # Pose clips are baked on the rig and retained in both GLB and .blend.
-    for mood in ['idle','working','happy','sleeping','wave','dance','curious','shake','yawn','kiss','grabbed']:
+    for mood in ['idle','working','happy','sleeping','wave','dance','curious','shake','yawn','kiss','grabbed','petting','sniff','paw','groom']:
         arm.animation_data_create()
         action = bpy.data.actions.new(mood)
         arm.animation_data.action=action
@@ -177,6 +177,41 @@ def build(kind):
                     b['HindLeg_'+side].rotation_euler.x=.14*math.sin(t*2)*-sign
                     b['HindPaw_'+side].rotation_euler.x=.12*math.cos(t*2)*sign
                 b['Tail'].rotation_euler.y=.5*math.sin(t*3)
+            # Soft envelopes return each interaction to rest before the clip ends.
+            ease = math.sin(t/2)**2
+            if mood == 'petting':
+                b['Head'].rotation_euler.z=(.16 if cat else -.12)*ease
+                b['Head'].rotation_euler.x=-.10*ease
+                b['Eye_L'].scale.y=b['Eye_R'].scale.y=1-.65*ease
+                b['Ear_L'].rotation_euler.x=-.16*ease
+                b['Ear_R'].rotation_euler.x=-.16*ease
+                b['Tail'].rotation_euler.y=(.22 if cat else .55)*math.sin(t*2)*ease
+            if mood == 'sniff':
+                b['Head'].rotation_euler.x=.22*ease
+                b['Head'].rotation_euler.z=.18*math.sin(t)*ease
+                b['Head'].location.y=-.035*math.sin(t*3)*ease
+                b['Ear_L'].rotation_euler.x=-.12*ease
+                b['Ear_R'].rotation_euler.x=-.12*ease
+            if mood == 'paw':
+                b['Foreleg_R'].rotation_euler.x=-.85*ease
+                b['Foreleg_R'].rotation_euler.z=.25*ease
+                b['FrontPaw_R'].rotation_euler.x=.35*ease
+                b['Head'].rotation_euler.z=-.12*ease
+                b['Tail'].rotation_euler.y=(.2 if cat else .5)*math.sin(t*2)*ease
+            if mood == 'groom':
+                if cat:
+                    b['Foreleg_L'].rotation_euler.x=-1.35*ease
+                    b['Foreleg_L'].rotation_euler.z=-.3*ease
+                    b['FrontPaw_L'].rotation_euler.x=.5*ease
+                    b['Head'].rotation_euler.x=.22*ease
+                    b['Head'].rotation_euler.z=-.18*ease
+                    b['Jaw'].rotation_euler.x=.15*(1-math.cos(t*3))*ease
+                else:
+                    b['HindLeg_R'].rotation_euler.z=-.65*ease
+                    b['HindLeg_R'].rotation_euler.x=-.45*ease
+                    b['HindPaw_R'].rotation_euler.x=.45*math.sin(t*4)*ease
+                    b['Head'].rotation_euler.z=.22*ease
+                    b['Ear_R'].rotation_euler.x=.2*math.sin(t*4)*ease
             if mood == 'wave':
                 b['Foreleg_R'].rotation_euler.z=1.95+.2*math.sin(t*3)
                 b['FrontPaw_R'].rotation_euler.z=.4*math.sin(t*3)

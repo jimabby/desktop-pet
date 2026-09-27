@@ -1,6 +1,7 @@
 // Bundled locally by build:3d. No CDN, network service or Blender installation
 // is needed when the packaged pet runs.
 import * as THREE from 'three';
+import { createModelAppearance } from './model-appearance.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const MODEL_SKINS = ['kitten', 'puppy'];
@@ -22,8 +23,9 @@ function disposeModel(root) {
 function createView(host) {
   const owner = host.parentElement;
   let renderer, root, mixer, clips = {}, action, skin = '', requestId = 0;
+  let updateAppearance;
   let raf = 0, lastFrame = 0, failed = false, stopped = false;
-  let gazeX = 0, gazeY = 0;
+  let gazeX = 0, gazeY = 0, actionOneShot = false;
   const scene = new THREE.Scene();
   const camera = new THREE.OrthographicCamera(-1.45, 1.45, 1.45, -1.45, .1, 30);
   camera.position.set(0, 1.9, 7);
@@ -34,11 +36,19 @@ function createView(host) {
   const rim = new THREE.DirectionalLight(0xc5dcff, 2);
   rim.position.set(3, 3, -2); scene.add(rim);
 
+  function syncAppearance() {
+    const color = getComputedStyle(owner).getPropertyValue('--model-fur').trim() || 'natural';
+    const cosmetic = [...owner.classList].find(c => c.startsWith('cosmetic-'))?.slice(9) || 'none';
+    updateAppearance?.(color, cosmetic, owner.classList.contains('focusing'));
+  }
   function desiredClip() {
     const c = owner.classList;
     if (c.contains('grabbed')) return 'grabbed';
-    for (const name of ['wave', 'dance', 'curious', 'shake', 'yawn', 'kiss']) {
+    for (const name of ['petting', 'sniff', 'paw', 'groom', 'wave', 'dance', 'curious', 'shake', 'yawn', 'kiss']) {
       if (c.contains('act-' + name)) return name;
+    }
+    for (const [gesture, clip] of Object.entries({ look: 'curious', stretch: 'yawn', wiggle: 'petting', hop: 'happy' })) {
+      if (c.contains('act-' + gesture)) return clip;
     }
     if (c.contains('mood-sleeping')) return 'sleeping';
     if (c.contains('mood-happy')) return 'happy';
@@ -84,14 +94,21 @@ function createView(host) {
   function wake() {
     if (active() && !raf && !stopped) { lastFrame = performance.now() - 34; raf = requestAnimationFrame(draw); }
   }
-  function syncClip() {
+  function syncClip(restart = false) {
     if (!mixer) return;
     const clip = clips[desiredClip()] || clips.idle;
     if (!clip) return;
     const next = mixer.clipAction(clip);
-    if (next !== action) {
+    const oneShot = ['petting', 'sniff', 'paw', 'groom', 'wave', 'curious', 'shake', 'yawn', 'kiss'].includes(clip.name) &&
+      [...owner.classList].some(c => c.startsWith('act-'));
+    if (next !== action || oneShot !== actionOneShot || (restart === true && oneShot)) {
       action?.fadeOut(.2);
-      next.reset().fadeIn(.2).play();
+      next.reset();
+      actionOneShot = oneShot;
+      next.setLoop(oneShot ? THREE.LoopOnce : THREE.LoopRepeat, oneShot ? 1 : Infinity);
+      next.clampWhenFinished = oneShot;
+      next.setDuration(oneShot ? 1.4 : clip.duration);
+      next.fadeIn(.2).play();
       action = next;
     }
     if (reduced.matches) {
@@ -124,11 +141,16 @@ function createView(host) {
     host.dispatchEvent(new CustomEvent('model-error', { bubbles: true }));
     cancelAnimationFrame(raf); raf = 0;
   }
-  async function sync() {
+  async function sync(records = []) {
     if (stopped) return;
     const nextSkin = MODEL_SKINS.find(s => owner.classList.contains('skin-' + s)) || '';
     if (nextSkin === skin) {
-      if (!failed) syncClip();
+      // Removing/re-adding an action in one task is a fresh interaction.
+      // Blink and unrelated class changes must not restart a gesture.
+      const gesture = 'act-' + desiredClip();
+      const restart = owner.classList.contains(gesture) && records.some(r =>
+        r.oldValue != null && !r.oldValue.split(/\s+/).includes(gesture));
+      if (!failed) { syncAppearance(); syncClip(restart); }
       return;
     }
     skin = nextSkin; failed = false;
@@ -137,7 +159,7 @@ function createView(host) {
     cancelAnimationFrame(raf); raf = 0;
     mixer?.stopAllAction();
     if (root) { mixer?.uncacheRoot(root); scene.remove(root); disposeModel(root); }
-    root = null; mixer = null; action = null; clips = {};
+    root = null; updateAppearance = null; mixer = null; action = null; clips = {};
     if (!skin) { delete owner.dataset.modelStatus; return; }
     owner.dataset.modelStatus = 'loading';
     try {
@@ -147,6 +169,8 @@ function createView(host) {
       root = gltf.scene;
       root.rotation.y = -.12;
       scene.add(root);
+      updateAppearance = createModelAppearance(root);
+      syncAppearance();
       mixer = new THREE.AnimationMixer(root);
       clips = Object.fromEntries(gltf.animations.map(c => [c.name, c]));
       if (!clips.idle) throw new Error('Model has no idle animation');
@@ -156,7 +180,7 @@ function createView(host) {
     } catch (e) { if (id === requestId) fail(e); }
   }
   const observer = new MutationObserver(sync);
-  observer.observe(owner, { attributes: true, attributeFilter: ['class'] });
+  observer.observe(owner, { attributes: true, attributeFilter: ['class', 'style'], attributeOldValue: true });
   const visibility = () => { if (document.hidden) { cancelAnimationFrame(raf); raf = 0; } else wake(); };
   const pointer = e => {
     const rect = host.getBoundingClientRect();

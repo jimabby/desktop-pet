@@ -122,13 +122,18 @@
         background: #fff;
       }
     </style>
+    <link rel="stylesheet" href="cosmetics.css" />
     <link rel="stylesheet" href="models.css" />
   </head>
   <body>
     <h1>🐾 Pet settings</h1>
 
     <div class="preview">
-      <div class="blob" id="preview-blob"></div>
+      <div class="blob" id="preview-blob"><div class="accessory-preview" aria-hidden="true">
+        <div class="crown"></div><div class="glasses"><span class="lens left"></span><span class="lens right"></span></div>
+        <div class="scarf"><span class="tail"></span></div><div class="headphones"><span class="cup left"></span><span class="cup right"></span></div>
+        <div class="bowtie"></div><div class="flower-pin"></div><div class="cap"></div>
+      </div></div>
       <div id="model-preview" class="model-preview mood-idle"><div class="model-view" data-model-view aria-hidden="true"></div></div>
       <span id="preview-name">your companion</span>
     </div>

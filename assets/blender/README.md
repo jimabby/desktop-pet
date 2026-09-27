@@ -38,3 +38,7 @@ Export as glTF Binary (`.glb`), include skins and all actions, and place the
 files under `src/renderer/models/`. Each model is approximately 1 MB. No Draco
 or remote decoder is required. `npm run test:3d` saves screenshots in a temporary
 directory and prints its path; it does not touch your live pet configuration.
+
+Gentle `petting`, `sniff`, `paw`, and `groom` clips keep the root planted.
+The kitten washes a raised paw; the puppy scratches with a hind paw.
+The renderer plays gestures once with a fade back to the current mood.

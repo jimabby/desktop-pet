@@ -18,8 +18,8 @@ function createStore(app) {
     hidden: false,
     name: '',
     color: 'green',
-    skin: 'slime', // character: slime | cat | ghost | bunny | kitten | puppy
-    cosmetic: 'none', // equipped headwear: none | glasses | scarf | headphones | crown
+    skin: 'slime', // character: slime | kitten | puppy
+    cosmetic: 'none', // equipped headwear: none | bowtie | flower | glasses | cap | scarf | headphones | crown
     timeOfDay: true, // tint the pet warmer at night / brighter by day
     wander: true, // let the pet stroll a few px on its own when idle
     physics: true, // fling/throw the pet so it slides + bounces off edges
@@ -67,6 +67,9 @@ function createStore(app) {
   } catch {
     /* first run or unreadable — use defaults */
   }
+
+  // Retired characters fall back to the default on existing installations.
+  if (!['slime', 'kitten', 'puppy'].includes(data.skin)) data.skin = 'slime';
 
   let writeTimer = null;
   function flush() {

@@ -1,0 +1,142 @@
+/* ============ UNLOCKABLE COSMETICS ============ */
+/* Each is hidden until #pet carries the matching cosmetic-* class. */
+.crown, .glasses, .scarf, .headphones { display: none; }
+.cosmetic-crown .crown { display: block; }
+.cosmetic-glasses .glasses { display: block; }
+.cosmetic-scarf .scarf { display: block; }
+.cosmetic-headphones .headphones { display: block; }
+
+/* Crown — a little gold zig-zag band on top. */
+.crown {
+  position: absolute;
+  top: -2px;
+  left: 50%;
+  width: 34px;
+  height: 16px;
+  transform: translateX(-50%);
+  background: linear-gradient(160deg, #ffe27a, #ffb02e);
+  clip-path: polygon(0 100%, 0 35%, 20% 70%, 50% 0, 80% 70%, 100% 35%, 100% 100%);
+  z-index: 4;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.2));
+}
+.crown::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  transform: translateX(-50%);
+  background: #ff5a7a;
+  border-radius: 50%;
+}
+
+/* Glasses — two round lenses over the eyes, joined by a bridge. */
+.glasses {
+  position: absolute;
+  top: 36px;
+  left: 50%;
+  width: 64px;
+  height: 18px;
+  transform: translateX(-50%);
+  z-index: 3;
+}
+.glasses .lens {
+  position: absolute;
+  top: 0;
+  width: 20px;
+  height: 18px;
+  border: 2.5px solid #33384a;
+  border-radius: 50%;
+  background: rgba(180, 220, 255, 0.28);
+}
+.glasses .lens.left { left: 2px; }
+.glasses .lens.right { right: 2px; }
+.glasses::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  width: 14px;
+  height: 3px;
+  transform: translateX(-50%);
+  background: #33384a;
+  border-radius: 2px;
+}
+
+/* Scarf — a knitted band low on the body with a hanging tail. */
+.scarf {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  width: 88px;
+  height: 14px;
+  transform: translateX(-50%);
+  background: repeating-linear-gradient(90deg, #e8473c 0 7px, #c4392f 7px 14px);
+  border-radius: 7px;
+  z-index: 3;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.12);
+}
+.scarf .tail {
+  position: absolute;
+  bottom: -16px;
+  left: 12px;
+  width: 12px;
+  height: 20px;
+  background: repeating-linear-gradient(90deg, #e8473c 0 6px, #c4392f 6px 12px);
+  border-radius: 0 0 4px 4px;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.12);
+  animation: scarf-flutter 2.6s ease-in-out infinite;
+  transform-origin: top center;
+}
+@keyframes scarf-flutter {
+  0%, 100% { transform: rotate(-5deg); }
+  50%      { transform: rotate(7deg); }
+}
+
+/* Headphones — a band arcing over the head with two ear cups. */
+.headphones {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  width: 80px;
+  height: 30px;
+  transform: translateX(-50%);
+  z-index: 3;
+  pointer-events: none;
+}
+.headphones::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 72px;
+  height: 34px;
+  transform: translateX(-50%);
+  border: 5px solid #33384a;
+  border-bottom: 0;
+  border-radius: 36px 36px 0 0;
+}
+.headphones .cup {
+  position: absolute;
+  top: 22px;
+  width: 13px;
+  height: 19px;
+  background: linear-gradient(160deg, #7d6bff, #5a52e0);
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 2px #33384a;
+}
+.headphones .cup.left { left: -2px; }
+.headphones .cup.right { right: -2px; }
+
+/* Extra accessories use distinct names to avoid the sprout's flower. */
+.bowtie, .flower-pin, .cap { display: none; position: absolute; z-index: 4; pointer-events: none; }
+.cosmetic-bowtie .bowtie { display: block; }
+.bowtie { left: 50%; top: 73px; width: 36px; height: 20px; transform: translateX(-50%); background: #8974e8; clip-path: polygon(0 0,50% 35%,100% 0,100% 100%,50% 65%,0 100%); }
+.bowtie::after { content: ''; position: absolute; left: 15px; top: 6px; width: 7px; height: 8px; border-radius: 50%; background: #ffc857; }
+.cosmetic-flower .flower-pin { display: block; }
+.flower-pin { left: 17px; top: 8px; width: 12px; height: 12px; border-radius: 50%; background: #ffc857; box-shadow: -9px 0 #df526c,9px 0 #df526c,-5px -8px #df526c,5px -8px #df526c,-5px 8px #df526c,5px 8px #df526c; }
+.cosmetic-cap .cap { display: block; }
+.cap { top: 1px; left: 34px; width: 42px; height: 24px; border-radius: 30px 30px 4px 4px; background: #51a88d; }
+.cap::after { content: ''; position: absolute; bottom: -2px; left: 4px; width: 53px; height: 7px; border-radius: 50%; background: #398e76; }
+@media (prefers-reduced-motion: reduce) { .scarf .tail { animation: none; } }

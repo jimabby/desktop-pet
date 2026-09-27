@@ -495,8 +495,6 @@ body {
 #pet.has-sprite .body,
 #pet.has-sprite .arm,
 #pet.has-sprite .foot,
-#pet.has-sprite .ear,
-#pet.has-sprite .bunny-ear,
 #pet.has-sprite .sprout,
 #pet.has-sprite .blanket { display: none; }
 @keyframes sprite-play {
@@ -920,235 +918,6 @@ body {
   50%      { transform: translateY(-3px) rotate(-12deg); }
 }
 
-/* ============ SKINS ============ */
-/* Default is "slime" — the base body styling above. Cat and ghost reshape the
-   silhouette and toggle extra parts via classes on #pet. */
-
-/* Cat: triangular ears + a slightly pointier body. */
-.ear {
-  display: none;
-  position: absolute;
-  top: 4px;
-  width: 0;
-  height: 0;
-  border-left: 13px solid transparent;
-  border-right: 13px solid transparent;
-  border-bottom: 22px solid var(--body-2, #45c97a);
-  z-index: 0;
-  filter: drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.05));
-}
-.skin-cat .ear { display: block; }
-.ear.left { left: 14px; transform: rotate(-20deg); }
-.ear.right { right: 14px; transform: rotate(20deg); }
-.ear::after {
-  content: "";
-  position: absolute;
-  left: -6px;
-  bottom: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-bottom: 11px solid rgba(255, 178, 200, 0.9);
-}
-.skin-cat .body { border-radius: 48% 48% 46% 46% / 56% 56% 44% 44%; }
-/* cat keeps the sprout hidden so the ears read cleanly */
-.skin-cat .sprout { display: none; }
-
-/* Bunny: tall floppy ears with a pink inner. */
-.bunny-ear {
-  display: none;
-  position: absolute;
-  top: -28px;
-  width: 16px;
-  height: 42px;
-  background: linear-gradient(160deg, var(--body-1, #7ee8a0) 0%, var(--body-2, #45c97a) 100%);
-  border-radius: 48% 48% 45% 45%;
-  box-shadow: inset -2px -2px 0 rgba(0, 0, 0, 0.06);
-  z-index: 0;
-  transform-origin: bottom center;
-}
-.skin-bunny .bunny-ear { display: block; }
-.bunny-ear::after {
-  content: "";
-  position: absolute;
-  top: 6px;
-  left: 50%;
-  width: 7px;
-  height: 28px;
-  transform: translateX(-50%);
-  background: rgba(255, 178, 200, 0.9);
-  border-radius: 50%;
-}
-.bunny-ear.left { left: 28px; transform: rotate(-13deg); animation: bunny-ear-l 3.6s ease-in-out infinite; }
-.bunny-ear.right { right: 28px; transform: rotate(13deg); animation: bunny-ear-r 3.6s ease-in-out infinite; }
-.skin-bunny .sprout { display: none; }
-/* perk the ears up when happy */
-.skin-bunny.mood-happy .bunny-ear.left { animation: bunny-ear-l 0.5s ease-in-out 4; }
-.skin-bunny.mood-happy .bunny-ear.right { animation: bunny-ear-r 0.5s ease-in-out 4; }
-@keyframes bunny-ear-l {
-  0%, 100% { transform: rotate(-13deg); }
-  50%      { transform: rotate(-5deg); }
-}
-@keyframes bunny-ear-r {
-  0%, 100% { transform: rotate(13deg); }
-  50%      { transform: rotate(5deg); }
-}
-
-/* Ghost: taller rounded top, translucent body, scalloped hem, no feet.
-   More see-through than a slime, with a soft ectoplasmic glow so it reads as
-   ethereal rather than just a recoloured blob. */
-.skin-ghost .body {
-  border-radius: 50% 50% 14% 14% / 64% 64% 20% 20%;
-  opacity: 0.82;
-  filter: drop-shadow(0 0 7px rgba(255, 255, 255, 0.45));
-}
-/* No grounded contact shadow — it floats. */
-.skin-ghost .shadow { opacity: 0.1; }
-.skin-ghost .foot { display: none; }
-.skin-ghost .sprout { display: none; }
-.skin-ghost .body::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -5px;
-  height: 11px;
-  background:
-    radial-gradient(circle at 50% 0, var(--body-2, #45c97a) 5.5px, transparent 6px) repeat-x;
-  background-size: 20px 11px;
-  z-index: -1;
-}
-
-/* ============ UNLOCKABLE COSMETICS ============ */
-/* Each is hidden until #pet carries the matching cosmetic-* class. */
-.crown, .glasses, .scarf, .headphones { display: none; }
-.cosmetic-crown .crown { display: block; }
-.cosmetic-glasses .glasses { display: block; }
-.cosmetic-scarf .scarf { display: block; }
-.cosmetic-headphones .headphones { display: block; }
-
-/* Crown — a little gold zig-zag band on top. */
-.crown {
-  position: absolute;
-  top: -2px;
-  left: 50%;
-  width: 34px;
-  height: 16px;
-  transform: translateX(-50%);
-  background: linear-gradient(160deg, #ffe27a, #ffb02e);
-  clip-path: polygon(0 100%, 0 35%, 20% 70%, 50% 0, 80% 70%, 100% 35%, 100% 100%);
-  z-index: 4;
-  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.2));
-}
-.crown::after {
-  content: "";
-  position: absolute;
-  top: 4px;
-  left: 50%;
-  width: 4px;
-  height: 4px;
-  transform: translateX(-50%);
-  background: #ff5a7a;
-  border-radius: 50%;
-}
-
-/* Glasses — two round lenses over the eyes, joined by a bridge. */
-.glasses {
-  position: absolute;
-  top: 36px;
-  left: 50%;
-  width: 64px;
-  height: 18px;
-  transform: translateX(-50%);
-  z-index: 3;
-}
-.glasses .lens {
-  position: absolute;
-  top: 0;
-  width: 20px;
-  height: 18px;
-  border: 2.5px solid #33384a;
-  border-radius: 50%;
-  background: rgba(180, 220, 255, 0.28);
-}
-.glasses .lens.left { left: 2px; }
-.glasses .lens.right { right: 2px; }
-.glasses::after {
-  content: "";
-  position: absolute;
-  top: 7px;
-  left: 50%;
-  width: 14px;
-  height: 3px;
-  transform: translateX(-50%);
-  background: #33384a;
-  border-radius: 2px;
-}
-
-/* Scarf — a knitted band low on the body with a hanging tail. */
-.scarf {
-  position: absolute;
-  bottom: 18px;
-  left: 50%;
-  width: 88px;
-  height: 14px;
-  transform: translateX(-50%);
-  background: repeating-linear-gradient(90deg, #e8473c 0 7px, #c4392f 7px 14px);
-  border-radius: 7px;
-  z-index: 3;
-  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.12);
-}
-.scarf .tail {
-  position: absolute;
-  bottom: -16px;
-  left: 12px;
-  width: 12px;
-  height: 20px;
-  background: repeating-linear-gradient(90deg, #e8473c 0 6px, #c4392f 6px 12px);
-  border-radius: 0 0 4px 4px;
-  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.12);
-  animation: scarf-flutter 2.6s ease-in-out infinite;
-  transform-origin: top center;
-}
-@keyframes scarf-flutter {
-  0%, 100% { transform: rotate(-5deg); }
-  50%      { transform: rotate(7deg); }
-}
-
-/* Headphones — a band arcing over the head with two ear cups. */
-.headphones {
-  position: absolute;
-  top: 24px;
-  left: 50%;
-  width: 80px;
-  height: 30px;
-  transform: translateX(-50%);
-  z-index: 3;
-  pointer-events: none;
-}
-.headphones::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 72px;
-  height: 34px;
-  transform: translateX(-50%);
-  border: 5px solid #33384a;
-  border-bottom: 0;
-  border-radius: 36px 36px 0 0;
-}
-.headphones .cup {
-  position: absolute;
-  top: 22px;
-  width: 13px;
-  height: 19px;
-  background: linear-gradient(160deg, #7d6bff, #5a52e0);
-  border-radius: 5px;
-  box-shadow: inset 0 0 0 2px #33384a;
-}
-.headphones .cup.left { left: -2px; }
-.headphones .cup.right { right: -2px; }
-
 /* ============ MORE AI SOURCES ============ */
 .ai-badge.source-copilot { background: #6e40c9; }
 .ai-badge.source-cursor  { background: #3b3b4f; }
@@ -1335,8 +1104,7 @@ body {
   .mood-thinking .pupil, .source-many.mood-thinking,
   .source-many.mood-working, .ai-badge, #pet.attention,
   #pet.attention::before, .mood-stressed, .mood-stressed .body,
-  .scarf .tail, #pet.rainbow .body, .bunny-ear, .bunny-ear.left,
-  .bunny-ear.right,
+  .scarf .tail, #pet.rainbow .body,
   .mood-thinking .ai-ring,
   .mood-sleeping .blanket, .focusing .focus-phones .cup {
     animation: none !important;
@@ -1360,9 +1128,6 @@ body {
 #pet.act-kiss .mouth { width: 9px; height: 8px; border: 2px solid #b95778; border-radius: 50%; background: #e8a0b7; }
 #pet.act-kiss .blush { opacity: 1; }
 #pet.act-kiss .arm.right { animation: arm-wave-r .65s ease-in-out 2; }
-#pet.act-curious .ear.right { transform: rotate(34deg); }
-#pet.act-curious .bunny-ear.right { animation: none; transform: rotate(30deg); }
-#pet.act-shake .bunny-ear { animation: gesture-ear .3s ease-in-out 4; }
 @keyframes gesture-yawn {
   0%, 100% { transform: scale(1); }
   15% { transform: scale(1.07, .92); }
@@ -1396,4 +1161,12 @@ body {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* Drawn-pet equivalents for the animal gestures. */
+#pet.act-sniff .body { animation: gesture-curious 1.7s ease-in-out; }
+#pet.act-paw .arm.right { animation: trick-wave .42s ease-in-out 3; }
+#pet.act-groom .arm.left { animation: arm-wave-l .4s ease-in-out 4; }
+@media (prefers-reduced-motion: reduce) {
+  #pet:is(.act-sniff,.act-paw,.act-groom) * { animation: none !important; }
 }

@@ -59,7 +59,7 @@ function harness() {
 }
 {
   const h = harness();
-  for (const name of ['yawn', 'curious', 'shake', 'kiss']) {
+  for (const name of ['yawn', 'curious', 'shake', 'kiss', 'sniff', 'paw', 'groom']) {
     h.events.onTrick(name);
     assert(h.node('pet').classList.contains('act-' + name));
     h.advance(1800);
@@ -94,5 +94,22 @@ function harness() {
   assert(h.node('pet').classList.contains('mood-sleeping'));
   h.run("say('open', 1000, 'https://example.com'); say('')");
   assert.equal(h.run('pendingLink'), '');
+}
+{
+  const h = harness();
+  h.node('pet').classList.add('has-model');
+  h.events.onClick();
+  assert(h.node('pet').classList.contains('act-petting'));
+  assert(!h.node('pet').classList.contains('act-wiggle'));
+  h.advance(1600);
+  assert(!h.node('pet').classList.contains('act-petting'));
+  h.events.onClick();
+  h.events.onAiState({ mood: 'working', source: 'claude', ttl: 10000 });
+  assert(!h.node('pet').classList.contains('act-petting'));
+  h.advance(1600);
+  assert(h.node('pet').classList.contains('mood-working'));
+  h.node('pet').classList.add('has-sprite');
+  h.events.onClick();
+  assert(h.node('pet').classList.contains('act-wiggle'));
 }
 console.log('Renderer regressions passed: gestures, AI interruption, confirmation, sleep and focus.');

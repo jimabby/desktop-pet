@@ -28,6 +28,25 @@ anticipation and recovery poses. Idle selection avoids consecutive repeats and
 includes the new gestures. A yawn precedes sleep. Quiet hours and reduced motion
 suppress spontaneous gestures; confirmation prompts take priority over tricks.
 
+The character picker now contains Slime, Kitten 3D and Puppy 3D; retired
+Cat/Ghost/Bunny selections fall back to Slime. The 3D models no longer inherit
+whole-character CSS reactions (except deliberate flip/spin tricks). Clicking
+uses a gentle head/ear/tail petting clip. Sniff, give a paw, and species-specific
+grooming are available in the tray and the animals' idle repertoire. Interaction
+clips play once and fade back to the current mood; AI events interrupt them.
+
+## Color and cosmetic fixes
+
+Color selection now updates 3D fur and markings, with Natural restoring the
+original materials. Peach, Cream, and Cocoa expand the palette. Glasses, scarf,
+headphones and crown use bone-attached 3D geometry; the old flat overlays are
+hidden on models. Bow tie and Flower are free, and Cap unlocks at 20 tasks.
+Settings previews selected colors and cosmetics for both drawn and 3D pets.
+Locked saved cosmetics now display the same effective selection as the pet.
+Electron checks cover recoloring, exact Natural reset, all seven accessories,
+removing accessories, and Settings selection. Wiring checks cover persistence
+and unlock enforcement.
+
 ## Remaining findings and worthwhile next steps
 
 - `maybeWander()` in `src/main.js` checks focus and dragging but does not know the

@@ -23,6 +23,10 @@ function ctxMax() {
 
 // Body color presets the settings window offers (key -> [stop1, stop2]).
 const PALETTE = {
+  natural: ['#e9bd86', '#ac754b'],
+  peach: ['#ffc49e', '#ec956d'],
+  cream: ['#fff0ce', '#e4cca0'],
+  cocoa: ['#b58b72', '#785643'],
   green: ['#7ee8a0', '#45c97a'],
   blue: ['#8fd2ff', '#4aa8f0'],
   pink: ['#ffc2d6', '#ff7eb6'],
@@ -31,10 +35,10 @@ const PALETTE = {
   gray: ['#cfd6e0', '#9aa7b8']
 };
 
-const SKINS = ['slime', 'cat', 'ghost', 'bunny', 'kitten', 'puppy'];
+const SKINS = ['slime', 'kitten', 'puppy'];
 
 // Cosmetics and the lifetime-task count needed to unlock each. 'none' is free.
-const COSMETIC_UNLOCKS = { none: 0, glasses: 10, headphones: 30, scarf: 50, crown: 120 };
+const COSMETIC_UNLOCKS = { none: 0, bowtie: 0, flower: 0, glasses: 10, cap: 20, headphones: 30, scarf: 50, crown: 120 };
 
 let win = null;
 let tray = null;
@@ -1114,7 +1118,7 @@ ipcMain.handle('settings:get', () => {
     palette: PALETTE,
     skin: SKINS.includes(store.get('skin')) ? store.get('skin') : 'slime',
     skins: SKINS,
-    cosmetic: store.get('cosmetic') || 'none',
+    cosmetic: appearance().cosmetic,
     cosmeticUnlocks: COSMETIC_UNLOCKS,
     unlocked: unlockedCosmetics(),
     lifetimeTasks: store.get('lifetimeTasks') || 0,
@@ -1342,7 +1346,10 @@ function buildTrayMenu() {
         { label: '🥱 Yawn & stretch', click: () => doTrick('yawn') },
         { label: '👀 Curious tilt', click: () => doTrick('curious') },
         { label: '🐾 Shake it off', click: () => doTrick('shake') },
-        { label: '💕 Blow a kiss', click: () => doTrick('kiss') }
+        { label: '💕 Blow a kiss', click: () => doTrick('kiss') },
+        { label: '👃 Sniff around', click: () => doTrick('sniff') },
+        { label: '🐾 Give a paw', click: () => doTrick('paw') },
+        { label: '✨ Groom', click: () => doTrick('groom') }
       ]
     },
     { label: focusLabel(), click: toggleFocus },

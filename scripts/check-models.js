@@ -12,7 +12,7 @@ for (const skin of ['kitten', 'puppy']) {
     'Foreleg_L', 'Foreleg_R', 'FrontPaw_L', 'FrontPaw_R', 'HindLeg_L', 'HindLeg_R', 'HindPaw_L', 'HindPaw_R']) {
     assert(joints.has(joint), skin + ' missing joint ' + joint);
   }
-  for (const clip of ['idle', 'happy', 'working', 'sleeping', 'wave', 'dance', 'curious', 'shake', 'yawn', 'kiss', 'grabbed']) {
+  for (const clip of ['idle', 'happy', 'working', 'sleeping', 'wave', 'dance', 'curious', 'shake', 'yawn', 'kiss', 'grabbed', 'petting', 'sniff', 'paw', 'groom']) {
     assert(json.animations.some(a => a.name === clip && a.channels.length), skin + ' missing animation ' + clip);
   }
   const dimensions = { SCALAR: 1, VEC3: 3, VEC4: 4, MAT4: 16 };
@@ -29,6 +29,9 @@ for (const skin of ['kitten', 'puppy']) {
       const value = bytes.readFloatLE(start + i * (view.byteStride || size * 4) + c * 4);
       assert(Number.isFinite(value), 'animation must contain finite transforms');
       if (Math.abs(value - bytes.readFloatLE(start + c * 4)) > .001) changed = true;
+    }
+    if (['petting', 'sniff', 'paw', 'groom'].includes(animation.name) && json.nodes[channel.target.node].name === 'Root') {
+      assert(!changed, skin + ': gentle interactions must keep the root still');
     }
     // Constant non-rest poses (sleeping eyes / jaw) also differ across clips.
     if (changed) moving.add(json.nodes[channel.target.node].name);

@@ -168,8 +168,8 @@ function updateCtxRing() {
 // Appearance (name, body color, skin shape, cosmetic, time-of-day) from settings.
 // ---------------------------------------------------------------------------
 let petName = '';
-const SKINS = ['slime', 'cat', 'ghost', 'bunny', 'kitten', 'puppy'];
-const COSMETICS = ['none', 'glasses', 'scarf', 'headphones', 'crown'];
+const SKINS = ['slime', 'kitten', 'puppy'];
+const COSMETICS = ['none', 'glasses', 'scarf', 'headphones', 'crown', 'bowtie', 'flower', 'cap'];
 let timeOfDayEnabled = true;
 
 function applyAppearance(a) {
@@ -177,6 +177,7 @@ function applyAppearance(a) {
   if (Array.isArray(a.colorStops) && a.colorStops.length === 2) {
     document.documentElement.style.setProperty('--body-1', a.colorStops[0]);
     document.documentElement.style.setProperty('--body-2', a.colorStops[1]);
+    pet.style.setProperty('--model-fur', a.color === 'natural' ? 'natural' : a.colorStops[0]);
   }
   // Skin shape — a class on #pet so the CSS can reshape the body / ears / etc.
   if (typeof a.skin === 'string') {
@@ -720,13 +721,13 @@ const POKE_LINES = [
   'hi!',
   'hehe~',
   "let's go!",
-  '*wiggle*',
+  '*happy sigh*',
   'boop!',
   'i missed you',
   '^_^'
 ];
 // Said when you keep petting — the pet warms up the more you poke it.
-const LOVE_LINES = ['hehe that tickles!', 'more more~', "you're the best!", 'I love you! 💕', '*happy wiggle*'];
+const LOVE_LINES = ['hehe that tickles!', 'more more~', "you're the best!", 'I love you! 💕', '*happy sigh*'];
 
 // Track how fast you're poking so repeated pets escalate into a heart shower.
 let pokeStreak = 0;
@@ -757,7 +758,7 @@ function react() {
   setMood('happy', { silent: true }); // poking shouldn't spam the chime
   pet.classList.remove(...ACT_CLASSES);
   void pet.offsetWidth; // restart so rapid pokes re-trigger the wiggle
-  pet.classList.add('act-wiggle');
+  pet.classList.add(pet.classList.contains('has-model') && !pet.classList.contains('has-sprite') ? 'act-petting' : 'act-wiggle');
 
   // A few pets in a row -> gush hearts + a sweeter line; otherwise a small boop.
   if (pokeStreak >= 4) {
@@ -773,7 +774,7 @@ function react() {
 
   clearTimeout(happyResetTimer);
   happyResetTimer = setTimeout(() => {
-    pet.classList.remove('act-wiggle');
+    pet.classList.remove('act-wiggle', 'act-petting');
     if (activeAis.size) renderFromActiveAis();
     else setMood(focusPhase === 'break' ? 'sleeping' : 'idle');
   }, 1500);
@@ -870,8 +871,12 @@ window.petAPI.onDrop(() => {
 // is a CSS act-* class played briefly with a matching line + little flourish.
 // ---------------------------------------------------------------------------
 const TRICK_ACT = { dance: 'act-dance', flip: 'act-flip', wave: 'act-wave', spin: 'act-spin',
-  yawn: 'act-yawn', curious: 'act-curious', shake: 'act-shake', kiss: 'act-kiss' };
+  yawn: 'act-yawn', curious: 'act-curious', shake: 'act-shake', kiss: 'act-kiss',
+  sniff: 'act-sniff', paw: 'act-paw', groom: 'act-groom' };
 const TRICK_LINES = {
+  sniff: ['*sniff sniff*', 'something interesting?'],
+  paw: ['a paw for you!', 'high five!'],
+  groom: ['*tidy tidy*', 'looking my best~'],
   yawn: ['*yaaawn*', 'big stretch~'],
   curious: ['what’s that?', 'hmm? 👀'],
   shake: ['*shake shake*', 'all fluffed up!'],
@@ -1042,6 +1047,7 @@ setTimeout(blink, 2000);
 const IDLE_LINES = ['hmm~', 'la la la~', '*yawn*', 'still here!', 'boop?', '~ ♪', 'so quiet...'];
 const ACT_CLASSES = [
   'act-hop', 'act-wiggle', 'act-spin', 'act-stretch', 'act-look',
+  'act-petting', 'act-sniff', 'act-paw', 'act-groom',
   'act-dance', 'act-flip', 'act-wave', 'act-yawn', 'act-curious', 'act-shake', 'act-kiss'
 ];
 
@@ -1065,7 +1071,9 @@ function performIdleAction(action, duration = 1700) {
 }
 
 function doIdleAction() {
-  const choices = ['hop', 'wiggle', 'look', 'stretch', 'chatter', 'sparkle',
+  const choices = pet.classList.contains('has-model') && !pet.classList.contains('has-sprite')
+    ? ['sniff', 'groom', 'paw', 'curious', 'yawn', 'look', 'chatter']
+    : ['hop', 'wiggle', 'look', 'stretch', 'chatter', 'sparkle',
     'curious', 'curious', 'shake', 'kiss'];
   const pool = choices.filter((action) => action !== lastIdleAction);
   const action = pool[Math.floor(Math.random() * pool.length)];

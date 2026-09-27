@@ -20,13 +20,13 @@ is working**.
   then lands with a squish. With **throw physics** on, *fling* it and it slides
   and bounces off the screen edges, **perching** if it lands near the top
 - **Wander mode** — left alone, the pet occasionally strolls a few px on its own
-- **Skins** — pick **slime**, **cat** (ears!), **ghost**, or **bunny** (floppy
-  ears!) in Settings
-- **Unlockable cosmetics** — earn **glasses**, a **scarf**, **headphones**, and a
-  **crown** by racking up completed tasks, then equip them in Settings
+- **Skins** — pick **Slime**, **Kitten 3D**, or **Puppy 3D** in Settings
+- **Cosmetics** — wear a free **bow tie** or **flower**, then unlock **glasses**,
+  a **cap**, **headphones**, a **scarf**, and a **crown** by completing tasks.
+  The 3D accessories follow the pet’s head and body.
 - **Tricks on demand** — from the tray's **Tricks** menu make the pet **dance**
   (with music notes 🎵), **backflip**, **wave**, **spin**, **yawn & stretch**,
-  **curious tilt**, **shake it off**, or **blow a kiss**
+  **curious tilt**, **shake it off**, **blow a kiss**, **sniff around**, **give a paw**, or **groom**
 - **Hover to tickle** — rest your cursor on the pet (no click) and it giggles
 - **Waves hello** — it waves when it first appears or when you summon it back
 - **Time-of-day tint** — warmer/dimmer at night, brighter midday
@@ -102,8 +102,9 @@ the **tray icon** (the menu bar on macOS; there's no dock icon by design).
 Open **Settings…** from the tray (or **right-click the pet**). The window covers:
 
 - **Name** — it'll introduce itself now and then, and the name shows in the tray
-- **Color** — pick a body color from a palette
-- **Skin** — slime, cat, ghost, bunny, Kitten 3D, or Puppy 3D
+- **Color** — pick a body/fur color; Natural restores the original animal coat.
+  Peach, Cream, and Cocoa join the existing palette.
+- **Skin** — Slime, Kitten 3D, or Puppy 3D
 - **Cosmetic** — equip any headwear you've unlocked (locked ones show how many
   completed tasks they need: glasses at 10, headphones at 30, scarf at 50, crown
   at 120)
@@ -528,13 +529,16 @@ electron-builder at it with `CSC_LINK=/path/to/cert.p12` and
 Run `npm start`, right-click the pet, then choose **Settings → Appearance →
 Kitten 3D / Puppy 3D**. The selection is saved. Settings shows a live 3D preview.
 If a custom sprite sheet is active, choose **Sprite art → Use drawn pet** to
-reveal the 3D character. These two characters have their own natural fur colors;
-the existing color palette applies to the CSS characters.
+reveal the 3D character. The color palette changes their fur and markings while
+keeping eyes, noses, and cream patches intact. **Natural** restores the original
+coat. Settings previews both colors and cosmetics. Bow tie and Flower are free;
+Glasses unlock at 10 tasks, Cap at 20, Headphones at 30, Scarf at 50, and Crown
+at 120. Select **None** to remove the equipped accessory.
 
 These are original Blender models with 18 bones each: torso, head, jaw, eyes,
 independent ears, four legs, four paws and a two-part tail, plus the root.
-They contain 11 animation clips: idle, working, happy, sleeping, wave, dance,
-curious, shake, yawn, kiss and grabbed. Use the tray's **Tricks** menu to try them.
+They contain 15 animation clips: idle, working, happy, sleeping, wave, dance,
+curious, shake, yawn, kiss, grabbed, petting, sniff, paw and groom. Use the tray's **Tricks** menu to try them.
 Cursor head tracking and blinking layer over the animations. Existing spin and
 backflip effects move the whole character. Reduced motion uses a still pose;
 hidden windows stop rendering. If WebGL/model loading fails, the drawn pet remains.
