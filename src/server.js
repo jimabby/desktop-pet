@@ -116,10 +116,14 @@ function startControlServer(port, onState, opts = {}) {
         // learns why instead of sitting on a dead socket until it times out.
         if (body.length > 1e5 && !tooBig) {
           tooBig = true;
-          res.writeHead(413, { 'Content-Type': 'application/json' });
+          res.writeHead(413, { 'Content-Type': 'application/json', Connection: 'close' });
           res.end(JSON.stringify({ error: 'payload too large' }));
-          req.destroy();
+          // Drain (and discard) the rest rather than resetting the socket
+          // mid-upload: on Windows a reset reaches the client as ECONNRESET
+          // before it can read the 413. Cut it off if it just keeps sending.
+          setTimeout(() => req.destroy(), 5000).unref();
         }
+        if (tooBig) body = '';
       });
       req.on('end', () => {
         if (tooBig) return;
