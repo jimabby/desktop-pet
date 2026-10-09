@@ -87,6 +87,7 @@
       }
       .toggle input { width: 16px; height: 16px; cursor: pointer; }
       .hint { font-size: 10.5px; color: #9aa0ad; margin-top: 4px; font-weight: 400; }
+      .hint.warn { color: #d9534f; }
       .row { display: flex; justify-content: flex-end; margin-top: 18px; }
       button {
         padding: 7px 16px;
@@ -201,11 +202,27 @@
       </div>
     </div>
 
+    <h2>Claude Code</h2>
+    <div class="field">
+      <div class="chips">
+        <button type="button" class="mini" id="installHooks">Install Claude Code hooks…</button>
+      </div>
+      <div class="hint" id="hooksStatus">…</div>
+    </div>
+
     <h2>Advanced</h2>
     <div class="field">
-      <label for="hotkey">Global show/hide hotkey</label>
-      <input type="text" id="hotkey" placeholder="CommandOrControl+Shift+P" />
-      <div class="hint">Electron accelerator. Leave blank to disable.</div>
+      <label for="hotkey">Show/hide shortcut</label>
+      <input type="text" id="hotkey" placeholder="CommandOrControl+Alt+Shift+P" />
+      <div class="hint" id="hotkeyHint">Electron accelerator, works system-wide. Leave blank to disable.</div>
+    </div>
+    <div class="field">
+      <label for="confirmHotkey">Answer-confirm shortcut</label>
+      <input type="text" id="confirmHotkey" placeholder="CommandOrControl+Alt+Shift+J" />
+      <div class="hint" id="confirmHotkeyHint">
+        Jumps to the newest prompt waiting on you (editor or terminal) and stops
+        the pet nudging about it. Leave blank to disable.
+      </div>
     </div>
     <div class="field">
       <label for="stress">Stress threshold (k tokens)</label>
@@ -219,11 +236,14 @@
     </div>
     <div class="field">
       <label for="token">Control-server token</label>
-      <input type="password" id="token" placeholder="(none)" />
-      <div class="hint">
+      <div class="row2">
+        <input type="password" id="token" placeholder="(none)" />
+        <button type="button" class="mini ghost" id="regenToken">Regenerate</button>
+      </div>
+      <div class="hint" id="tokenHint">
         Generated on first run. The bundled hook reads it automatically; paste it
-        into the browser userscript's TOKEN if you use that. Clearing it leaves
-        the pet open to any web page you have loaded.
+        into the browser userscript's TOKEN if you use that. It can't be empty —
+        that would let any web page you have open drive the pet.
       </div>
     </div>
     <div class="field">

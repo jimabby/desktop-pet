@@ -43,7 +43,12 @@ let pendingLink = '';
 let confirmPending = false;
 let confirmLevel = 0;
 let confirmNudgeTimer = null;
-const confirmInfo = { text: '', link: '', linkText: '' };
+// Unanswered confirms, keyed by source + session (main supplies the key), so
+// two sessions can each be waiting without one dismissing the other. The
+// newest is the one on screen (confirmInfo).
+const pendingConfirms = new Map(); // key -> { text, link, linkText }
+const confirmInfo = { key: '', text: '', link: '', linkText: '' };
+// Busy assistants, keyed the same way: { key, source, mood, timer, startedAt, ctx }.
 const activeAis = new Map();
 let muted = false;
 // Do-not-disturb, computed in main from the configured window and pushed here
@@ -137,7 +142,6 @@ window.petAPI.onWeeklyStats((stats) => {
 // state as `ctx`.
 // ---------------------------------------------------------------------------
 let ctxMax = 200000; // overridden by settings (PET_CTX_MAX)
-let lastCtx = 0;
 
 function ringColor(pct) {
   if (pct >= 85) return '#f25b5b'; // red — running low on room
@@ -146,8 +150,12 @@ function ringColor(pct) {
 }
 
 function updateCtxRing() {
+  // The session currently driving the pet's mood owns the ring, so two
+  // sessions don't make it flicker between their sizes.
+  const strongest = strongestActive();
+  const lastCtx = strongest ? strongest.ctx : 0;
   // Only show while an AI is actively working — hide completely when idle
-  if (lastCtx <= 0 || activeAis.size === 0) {
+  if (lastCtx <= 0) {
     ctxBar.classList.add('hidden');
     ctxBarLabel.classList.add('hidden');
     return;
@@ -194,9 +202,10 @@ function applyAppearance(a) {
     timeOfDayEnabled = a.timeOfDay;
     applyTimeOfDay();
   }
-  // Optional sprite-sheet art (drop-in replacement for the CSS character).
-  if ('sprite' in a) applySprite(a.sprite);
 }
+
+// Sprite art arrives on its own channel, only when it changes (it can be large).
+window.petAPI.onSprite((sprite) => applySprite(sprite));
 
 // ---------------------------------------------------------------------------
 // Optional sprite-sheet art. When a sprite config is supplied, the CSS-drawn
@@ -338,6 +347,7 @@ function burst(type, count) {
 const PERSISTENT_FLAGS = [
   'blink', 'attention', 'attention-strong', 'party',
   'grabbed', 'rainbow', 'focusing', 'has-sprite', 'has-model',
+  'walking', 'face-left', 'face-right',
   // The task-done flourish outlives the setMood() that triggers it.
   'big-celebrate'
 ];
@@ -356,11 +366,28 @@ function applyClasses() {
   const keep = [...pet.classList].filter(isPersistentClass);
   pet.className = 'mood-' + currentMood;
   keep.forEach((c) => pet.classList.add(c));
-  if (activeAis.size > 1) {
+  if (activeSourceCounts().size > 1) {
     pet.classList.add('source-many');
   } else if (currentSource && KNOWN_SOURCES.includes(currentSource)) {
     pet.classList.add('source-' + currentSource);
   }
+  reportState();
+}
+
+// Tell main what the pet is up to, only when it changes. Main uses it to
+// decide whether wandering off is appropriate.
+let lastReported = '';
+function reportState() {
+  const st = {
+    mood: currentMood,
+    busy: activeAis.size > 0,
+    confirm: confirmPending,
+    reducedMotion: reducedMotion.matches
+  };
+  const sig = JSON.stringify(st);
+  if (sig === lastReported) return;
+  lastReported = sig;
+  window.petAPI.reportState(st);
 }
 
 function setMood(mood, { silent = false } = {}) {
@@ -423,6 +450,31 @@ function attention() {
   }, 8000);
 }
 
+// The bubble text for the confirm on screen, noting any others still waiting.
+function confirmBubbleText() {
+  const more = pendingConfirms.size - 1;
+  return confirmInfo.text + (more > 0 ? ` (+${more} more waiting)` : '');
+}
+
+function sayConfirm(ms = 60000) {
+  say(confirmBubbleText(), ms, confirmInfo.link, confirmInfo.linkText);
+}
+
+// Put the newest waiting confirm on screen.
+function showLatestConfirm() {
+  const [key, c] = [...pendingConfirms].pop();
+  Object.assign(confirmInfo, { key }, c);
+}
+
+// One session's prompt was answered. Returns true while others still wait
+// (the newest of them is then on screen).
+function resolveConfirm(key) {
+  pendingConfirms.delete(key);
+  if (!pendingConfirms.size) return false;
+  showLatestConfirm();
+  return true;
+}
+
 // Start (or restart) nudging for an unanswered confirm. attention() already
 // bounced + chimed once; here we keep it bouncing and re-chime on a growing
 // cadence so a prompt left sitting is impossible to miss.
@@ -453,15 +505,18 @@ function scheduleNextNudge() {
     pet.classList.toggle('attention-strong', confirmLevel >= 3); // bigger bounce
     setMood('stressed', { silent: true });
     playSound('attention');
-    if (confirmInfo.text) say(confirmInfo.text, 18000, confirmInfo.link, confirmInfo.linkText);
+    if (confirmInfo.text) sayConfirm(18000);
     scheduleNextNudge();
   }, delay);
 }
 
 // Stop nudging (answered, poked, or a new AI event arrived). restore=true puts
 // the pet back to a sensible mood; pass false when the caller sets it next.
+// Also forgets every waiting confirm: callers use it when all of them are
+// answered or acknowledged at once.
 function stopConfirmNudge({ restore = true } = {}) {
   const wasActive = confirmPending || confirmNudgeTimer;
+  pendingConfirms.clear();
   confirmPending = false;
   confirmLevel = 0;
   clearTimeout(confirmNudgeTimer);
@@ -472,6 +527,7 @@ function stopConfirmNudge({ restore = true } = {}) {
     if (activeAis.size) renderFromActiveAis();
     else setMood('idle');
   }
+  reportState();
 }
 
 // Open the pending link. Only ever called from a deliberate click on the
@@ -481,10 +537,27 @@ function openPendingLink() {
   window.petAPI.openLink(pendingLink);
   pendingLink = '';
   bubbleLink.classList.add('hidden');
-  stopConfirmNudge({ restore: true });
-  say('on my way! 🚀', 1500);
+  answeredConfirm(confirmInfo.key);
   return true;
 }
+
+// The confirm on screen (or the one main says the hotkey answered) is being
+// dealt with. Move on to the next waiting one, or settle down if none are left.
+function answeredConfirm(key) {
+  if (pendingConfirms.has(key) && resolveConfirm(key)) {
+    setTimeout(() => {
+      if (confirmPending) sayConfirm();
+    }, 1500);
+    say('on my way! 🚀', 1500);
+    return;
+  }
+  stopConfirmNudge({ restore: true });
+  say('on my way! 🚀', 1500);
+}
+
+window.petAPI.onConfirmAck((key) => {
+  if (pendingConfirms.has(key)) answeredConfirm(key);
+});
 
 bubbleLink.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ' ') {
@@ -508,14 +581,25 @@ function sourceName(source) {
   return source.charAt(0).toUpperCase() + source.slice(1);
 }
 
+// Busy sessions per assistant, e.g. { claude: 2, chatgpt: 1 }.
+function activeSourceCounts() {
+  const counts = new Map();
+  activeAis.forEach((a) => counts.set(a.source, (counts.get(a.source) || 0) + 1));
+  return counts;
+}
+
 function summarizeActiveAis() {
-  const sources = [...activeAis.keys()].map(sourceName);
+  const counts = activeSourceCounts();
+  const sources = [...counts].map(([s, n]) => (n > 1 ? `${sourceName(s)} ×${n}` : sourceName(s)));
   if (sources.length === 0) return '';
-  if (sources.length === 1) return `${sources[0]} is ${currentMood}...`;
+  if (sources.length === 1) {
+    return activeAis.size === 1 ? `${sources[0]} is ${currentMood}...` : `${sources[0]} are busy...`;
+  }
   if (sources.length === 2) return `${sources[0]} + ${sources[1]} are teaming up...`;
   return `${sources.slice(0, 3).join(' + ')} are working together...`;
 }
 
+// One badge per assistant, with a session count when it has several going.
 function renderBadges() {
   aiBadges.replaceChildren();
   if (activeAis.size === 0) {
@@ -524,26 +608,39 @@ function renderBadges() {
   }
 
   aiBadges.classList.remove('hidden');
-  [...activeAis.keys()].slice(0, 4).forEach((source) => {
+  [...activeSourceCounts()].slice(0, 4).forEach(([source, n]) => {
     const badge = document.createElement('span');
     badge.className = `ai-badge source-${source}`;
-    badge.textContent = SOURCE_LABELS[source] || sourceName(source).slice(0, 3);
-    badge.title = sourceName(source);
+    const label = SOURCE_LABELS[source] || sourceName(source).slice(0, 3);
+    badge.textContent = n > 1 ? `${label}×${n}` : label;
+    badge.title = n > 1 ? `${sourceName(source)} — ${n} sessions` : sourceName(source);
     aiBadges.appendChild(badge);
   });
 }
 
-function removeActiveAi(source) {
-  const active = activeAis.get(source);
+function removeActiveAi(key) {
+  const active = activeAis.get(key);
   if (active && active.timer) clearTimeout(active.timer);
-  activeAis.delete(source);
+  activeAis.delete(key);
   renderFromActiveAis();
+}
+
+// The busiest session (ties go to the most recently updated).
+function strongestActive() {
+  let strongest = null;
+  activeAis.forEach((active) => {
+    if (!strongest || MOOD_PRIORITY[active.mood] >= MOOD_PRIORITY[strongest.mood]) {
+      strongest = active;
+    }
+  });
+  return strongest;
 }
 
 function renderFromActiveAis() {
   renderBadges();
   updateCtxRing();
   updateActivityBar();
+  reportState();
   if (confirmPending) return;
   if (activeAis.size === 0) {
     lastActiveClear = Date.now(); // sleep timer starts from here, not last hook event
@@ -552,14 +649,8 @@ function renderFromActiveAis() {
     return;
   }
 
-  let strongest = null;
-  activeAis.forEach((active) => {
-    if (!strongest || MOOD_PRIORITY[active.mood] >= MOOD_PRIORITY[strongest.mood]) {
-      strongest = active;
-    }
-  });
-
-  setSource(activeAis.size > 1 ? 'many' : strongest.source);
+  const strongest = strongestActive();
+  setSource(activeSourceCounts().size > 1 ? 'many' : strongest.source);
   setMood(strongest.mood);
 }
 
@@ -568,36 +659,47 @@ function renderFromActiveAis() {
 // ---------------------------------------------------------------------------
 window.petAPI.onAiState((state) => {
   cancelReaction();
+  stopWalking();
   lastInteraction = Date.now();
   const source = normalizeSource(state.source);
+  const key = state.key || `${source}|${state.session || ''}`;
+  const prefix = state.source ? `${sourceName(source)}: ` : '';
   const goingIdle = state.mood === 'idle';
-  // Set when a source finishes a timed task, e.g. " · 2m 13s"; appended to the
+  const isConfirm = !!(state.attention || state.link);
+  // Set when a session finishes a timed task, e.g. " · 2m 13s"; appended to the
   // "done!" bubble so you can see how long the AI took.
   let finishedSuffix = '';
 
-  if (Number.isFinite(state.ctx) && state.ctx > 0) lastCtx = state.ctx;
-
-  // Any event that isn't itself a confirm means the pending one was answered
-  // (or superseded) — stop nudging. The mood is set by the rest of this handler.
-  if (!(state.attention || state.link)) stopConfirmNudge({ restore: false });
+  // Any other event from a session means its pending confirm was answered (or
+  // superseded). Other sessions' prompts keep waiting. An idle with no session
+  // clears the whole source; one with no source clears everything.
+  const confirmShownBefore = confirmInfo.key;
+  if (!isConfirm) {
+    if (goingIdle && !state.source) pendingConfirms.clear();
+    else if (goingIdle && !state.session) {
+      [...pendingConfirms.keys()].filter((k) => k.startsWith(source + '|')).forEach((k) => pendingConfirms.delete(k));
+    } else pendingConfirms.delete(key);
+    if (pendingConfirms.size) showLatestConfirm();
+    else stopConfirmNudge({ restore: false });
+  }
 
   if (goingIdle) {
-    if (state.source) {
-      removeActiveAi(source);
-    } else {
-      activeAis.forEach((active) => {
-        if (active.timer) clearTimeout(active.timer);
-      });
-      activeAis.clear();
-      lastCtx = 0; // whole session cleared — drop the context ring too
-      renderFromActiveAis();
-    }
+    const clear = (k) => {
+      const a = activeAis.get(k);
+      if (a && a.timer) clearTimeout(a.timer);
+      activeAis.delete(k);
+    };
+    if (!state.source) [...activeAis.keys()].forEach(clear);
+    else if (!state.session) {
+      [...activeAis].filter(([, a]) => a.source === source).forEach(([k]) => clear(k));
+    } else clear(key);
+    renderFromActiveAis();
   } else {
-    const previous = activeAis.get(source);
+    const previous = activeAis.get(key);
     if (previous && previous.timer) clearTimeout(previous.timer);
     const mood = MOODS.includes(state.mood) ? state.mood : 'thinking';
 
-    // Time the task: remember when this source first started being busy, and
+    // Time the task: remember when this session first started being busy, and
     // carry that start time across refreshes. When it lands on "happy" (done)
     // we can report how long it ran.
     let startedAt = previous ? previous.startedAt : 0;
@@ -608,11 +710,14 @@ window.petAPI.onAiState((state) => {
       startedAt = 0; // reset for the next task
     }
 
-    const active = { source, mood, timer: null, startedAt };
+    const ctx = Number.isFinite(state.ctx) && state.ctx > 0 ? state.ctx : previous ? previous.ctx : 0;
+    const active = { key, source, mood, timer: null, startedAt, ctx };
     if (state.ttl && state.ttl > 0) {
-      active.timer = setTimeout(() => removeActiveAi(source), state.ttl);
+      active.timer = setTimeout(() => removeActiveAi(key), state.ttl);
     }
-    activeAis.set(source, active);
+    // Re-insert so the most recently active session wins ties.
+    activeAis.delete(key);
+    activeAis.set(key, active);
     renderFromActiveAis();
 
     // Big task-done celebration: flowers + stars when an AI finishes a real task.
@@ -626,23 +731,28 @@ window.petAPI.onAiState((state) => {
     }
   }
 
-  if (state.attention || state.link) {
-    // A confirm/permission prompt. The link (jump back to the editor) is
-    // optional — the bounce + chime fire either way so it's never missed.
-    const prefix = state.source ? `${state.source}: ` : '';
-    const text = prefix + (state.text || 'needs you to confirm');
-    confirmInfo.text = text;
-    confirmInfo.link = state.link || '';
-    confirmInfo.linkText = state.linkText || '';
-    say(text, state.ttl || 60000, state.link, state.linkText);
+  if (isConfirm) {
+    // A confirm/permission prompt. The link (jump back to the editor or
+    // terminal) is optional — the bounce + chime fire either way.
+    pendingConfirms.delete(key);
+    pendingConfirms.set(key, {
+      text: prefix + (state.text || 'needs you to confirm'),
+      link: state.link || '',
+      linkText: state.linkText || ''
+    });
+    showLatestConfirm();
+    sayConfirm(state.ttl || 60000);
     attention();
     startConfirmNudge(); // keep nudging until it's answered
+  } else if (confirmPending) {
+    // Another session is still waiting on you: keep its prompt on screen
+    // rather than covering it with this session's chatter.
+    if (confirmInfo.key !== confirmShownBefore) sayConfirm();
   } else if (state.text) {
-    const prefix = state.source ? `${state.source}: ` : '';
     say(prefix + state.text + finishedSuffix, state.ttl || 6000);
   } else if (goingIdle) {
     say(activeAis.size ? summarizeActiveAis() : '');
-  } else if (activeAis.size > 1) {
+  } else if (activeSourceCounts().size > 1) {
     say(summarizeActiveAis(), 4500);
   }
 });
@@ -913,18 +1023,52 @@ window.petAPI.onTrick((name) => playTrick(name));
 // ---------------------------------------------------------------------------
 // Dragging (handled in main; we just signal start/end + keep interactive)
 // ---------------------------------------------------------------------------
+// While a drag is in progress the window must keep receiving mouse events:
+// if a fast flick put the cursor outside the pet and we turned click-through
+// back on, the mouseup would go to the app underneath and the pet would stay
+// stuck to the cursor.
+let dragging = false;
+function endDrag() {
+  dragging = false;
+  window.petAPI.dragEnd();
+}
 zone.addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
   lastInteraction = Date.now();
+  dragging = true;
+  stopWalking();
   window.petAPI.dragStart();
 });
-window.addEventListener('mouseup', () => window.petAPI.dragEnd());
+window.addEventListener('mouseup', endDrag);
+// Belt and braces: losing focus mid-drag (e.g. a system dialog) ends it too.
+window.addEventListener('blur', () => {
+  if (dragging) endDrag();
+});
 
-// Right-click the pet to open Settings.
+// Right-click the pet for the play menu (tricks, focus, settings).
 zone.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   lastInteraction = Date.now();
-  window.petAPI.openSettings();
+  window.petAPI.openMenu();
+});
+
+// ---------------------------------------------------------------------------
+// Walking: main moves the window when the pet wanders and tells us which way
+// and for how long, so the pet walks facing where it's going instead of
+// gliding.
+// ---------------------------------------------------------------------------
+let walkTimer = null;
+function stopWalking() {
+  clearTimeout(walkTimer);
+  walkTimer = null;
+  pet.classList.remove('walking', 'face-left', 'face-right');
+}
+window.petAPI.onWalk((w) => {
+  if (!w || currentMood !== 'idle' || activeAis.size || confirmPending) return;
+  cancelReaction();
+  stopWalking();
+  pet.classList.add('walking', w.dir === 'left' ? 'face-left' : 'face-right');
+  walkTimer = setTimeout(stopWalking, Math.max(300, Math.min(4000, Number(w.ms) || 1200)));
 });
 
 // ---------------------------------------------------------------------------
@@ -1012,7 +1156,7 @@ function maybeTickle() {
 let interactiveNow = false;
 window.addEventListener('mousemove', (e) => {
   const over = isOverInteractive(e.clientX, e.clientY);
-  if (over !== interactiveNow) {
+  if (over !== interactiveNow && !(dragging && !over)) {
     interactiveNow = over;
     window.petAPI.setInteractive(over);
     if (over) startTickleDwell();
@@ -1100,7 +1244,7 @@ function doIdleAction() {
 const SLEEP_AFTER_MS = 30000;
 setInterval(() => {
   if (activeAis.size || confirmPending || pendingLink || document.hidden ||
-      pet.classList.contains('grabbed')) return;
+      pet.classList.contains('grabbed') || pet.classList.contains('walking')) return;
   // During a focus work block the pet stays awake and attentive; on a break it
   // is already napping and shouldn't be nudged out of it by idle actions.
   if (focusPhase) return;

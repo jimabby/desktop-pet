@@ -12,7 +12,7 @@ for (const skin of ['kitten', 'puppy']) {
     'Foreleg_L', 'Foreleg_R', 'FrontPaw_L', 'FrontPaw_R', 'HindLeg_L', 'HindLeg_R', 'HindPaw_L', 'HindPaw_R']) {
     assert(joints.has(joint), skin + ' missing joint ' + joint);
   }
-  for (const clip of ['idle', 'happy', 'working', 'sleeping', 'wave', 'dance', 'curious', 'shake', 'yawn', 'kiss', 'grabbed', 'petting', 'sniff', 'paw', 'groom']) {
+  for (const clip of ['idle', 'happy', 'working', 'sleeping', 'wave', 'dance', 'curious', 'shake', 'yawn', 'kiss', 'grabbed', 'petting', 'sniff', 'paw', 'groom', 'walk']) {
     assert(json.animations.some(a => a.name === clip && a.channels.length), skin + ' missing animation ' + clip);
   }
   const dimensions = { SCALAR: 1, VEC3: 3, VEC4: 4, MAT4: 16 };

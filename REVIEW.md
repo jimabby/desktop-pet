@@ -47,30 +47,68 @@ Electron checks cover recoloring, exact Natural reset, all seven accessories,
 removing accessories, and Settings selection. Wiring checks cover persistence
 and unlock enforcement.
 
-## Remaining findings and worthwhile next steps
+## Second review: fixes
 
-- `maybeWander()` in `src/main.js` checks focus and dragging but does not know the
-  renderer's sleeping/busy state. Share that state before adding walking footfalls,
-  turning and edge reactions; otherwise a sleeping pet can slide around.
-- Confirmation state is global in `pet.js`: an event from another assistant can
-  dismiss the current prompt. Track pending confirmations per source for reliable
-  multi-assistant use.
-- Activity duration is estimated from busy-event intervals under one minute; it
-  is not precise task timing. Track explicit task/session identifiers if accurate
-  reports are needed.
-- Settings currently sends the whole form on each change; a stale settings window
-  can overwrite tray changes. Send only changed fields and synchronize updates.
-- A small play menu on the character would make tricks easier to discover.
-- Optional feeding, a toy to follow, and persistent affection could give interaction
-  more purpose. Keep these optional so the pet does not become a chore.
-- For a more lifelike silhouette, build dedicated per-skin movement cycles and
-  artwork; this change improves the existing CSS character rather than replacing
-  its art with a realistic model.
+- Sprite images were stored inline in `pet-config.json`, which is rewritten on
+  every AI event and parsed by every hook call. They now live in their own file
+  in userData; old configs are migrated, and the pet window receives the image
+  on its own IPC channel only when it changes.
+- Upgraded Electron 33 → 44 and electron-builder 25 → 26. Shipped dependencies
+  have no known advisories. `three` moved to devDependencies (it is bundled),
+  so 32 MB no longer ships in the app.
+- Sessions: hooks forward Claude Code's `session_id`. Active state and pending
+  confirms are tracked per source + session, so one session finishing no longer
+  clears another or dismisses its prompt.
+- Settings saves only the control that changed and receives live updates, so
+  an open Settings window can't undo tray changes.
+- Notification types: the idle "waiting for your input" reminder is ignored.
+  A prompt announced by both `PermissionRequest` and a `permission_prompt`
+  Notification counts and notifies once.
+- Dragging keeps the window interactive, so a fast flick can no longer leave
+  the pet stuck to the cursor.
+- The weekly total covers the same 7 days as the chart.
+- The daily greeting waits for the first activity of the day, not midnight.
+- `SubagentStop` no longer counts as a finished task.
+- Duplicate detection scans the recent window, not only the newest event.
+- An empty token is refused (Regenerate replaces it).
+- Hotkey registration failures show in Settings.
+- The login-item state is read back from the OS.
+- All windows block navigation and window.open.
+- The old default show/hide hotkey, `Cmd/Ctrl+Shift+P`, was registered
+  globally and stole VS Code's command palette. The new defaults use three
+  modifiers, and old configs are migrated.
+
+## Second review: features
+
+- Wandering only happens while the pet is idle and awake. It walks, facing its
+  direction, using a new `walk` trot clip in both GLB models.
+- **Open terminal →** links (macOS) bring the terminal running Claude Code to
+  the front, using `pet-focus://` and a fixed allowlist of terminal apps.
+- Per-session badges (`C×2`) and `+N more waiting` on stacked confirms. The
+  context ring follows the session currently driving the pet's mood.
+- "While you were away" summary when the pet is unhidden, or when you return
+  after 5+ minutes away from the keyboard.
+- Answer-confirm global shortcut: jumps to the newest waiting prompt.
+- Right-click play menu with tricks, focus, Activity, Settings and Hide.
+- One-click Claude Code hook installer. It previews the change, backs up the
+  file, keeps the user's other hooks and replaces stale pet entries.
+- GitHub Actions CI (Linux/macOS/Windows) and a GitHub Releases publish target.
+
+## Remaining ideas
+
+- Activity duration is still estimated from busy-event intervals.
+- Terminal focusing is macOS-only, and it brings the app forward rather than
+  the exact tab.
+- Optional feeding, a toy to follow, and persistent affection could give
+  interaction more purpose.
 
 ## Validation
 
-`npm test` covers server/hooks, main-process wiring and deterministic renderer
-regressions. Renderer tests cover gesture cleanup, AI interruption, confirmation
-expiry, sleep transition and focus-break recovery. These use a simulated DOM;
+`npm test` covers server/hooks, the hook installer merge, main-process wiring
+(including config migrations, per-session confirm counting, partial saves,
+hotkeys, the play menu and the away summary) and deterministic renderer
+regressions (gestures, confirms across sessions, sleep, focus and walking).
+`npm run test:3d` runs the GLB checks and an Electron/WebGL smoke test with
+walk screenshots and Settings live-sync checks. These use a simulated DOM;
 manual Electron checks are still needed for visual quality, native dragging,
 multiple monitors, imported sprite rendering and macOS/Windows/Linux packaging.

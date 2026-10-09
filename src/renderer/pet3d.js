@@ -44,6 +44,7 @@ function createView(host) {
   function desiredClip() {
     const c = owner.classList;
     if (c.contains('grabbed')) return 'grabbed';
+    if (c.contains('walking') && clips.walk) return 'walk';
     for (const name of ['petting', 'sniff', 'paw', 'groom', 'wave', 'dance', 'curious', 'shake', 'yawn', 'kiss']) {
       if (c.contains('act-' + name)) return name;
     }
@@ -65,6 +66,11 @@ function createView(host) {
     const dt = Math.min((now - lastFrame) / 1000 || 0, .08);
     lastFrame = now;
     mixer.update(reduced.matches ? 0 : dt);
+    // Turn toward the direction of a walk (three-quarter, so the face stays
+    // visible), easing back to the resting pose afterwards.
+    const facing = owner.classList.contains('face-left') ? -.85 : owner.classList.contains('face-right') ? .85 : -.12;
+    // Reduced motion draws single frames, so it snaps instead of easing.
+    root.rotation.y = reduced.matches ? facing : root.rotation.y + (facing - root.rotation.y) * Math.min(1, dt * 8);
     const overlays = [];
     function remember(object, property) {
       overlays.push([object, property, object[property].clone()]);

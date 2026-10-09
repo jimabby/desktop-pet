@@ -14,10 +14,14 @@ const http = require('http');
  *   mood     - idle | thinking | working | happy | sleeping | error  (default: idle)
  *   text     - optional speech-bubble message
  *   source   - optional label (claude | chatgpt | gemini | deepseek | ...)
+ *   session  - optional id that tells apart several sessions of one source
+ *              (e.g. two Claude Code windows), so one finishing doesn't
+ *              clear the other or dismiss its pending confirm.
  *   ttl      - optional ms after which the pet returns to idle
  *   link     - optional URL to open when the bubble is clicked (e.g. a
  *              vscode://file/... link to jump back to the editor for a confirm).
- *              Only safe schemes are accepted (http/https/vscode/cursor/...).
+ *              Only safe schemes are accepted (http/https/vscode/cursor/...),
+ *              plus pet-focus://app/<Terminal> to bring a terminal forward.
  *   linkText - optional label for that link (default: "Open →")
  *   attention- optional bool; true marks a confirm/permission prompt so the pet
  *              bounces + chimes for your attention even with no link.
@@ -44,7 +48,10 @@ const ALLOWED_LINK_SCHEMES = new Set([
   'vscode:',
   'vscode-insiders:',
   'cursor:',
-  'windsurf:'
+  'windsurf:',
+  // Internal: pet-focus://app/<name> brings a known terminal app to the front.
+  // main.js handles it itself and never passes it to the OS.
+  'pet-focus:'
 ]);
 
 function startControlServer(port, onState, opts = {}) {
@@ -86,12 +93,15 @@ function startControlServer(port, onState, opts = {}) {
       return res.end();
     }
 
-    if (req.method === 'GET' && req.url === '/health') {
+    // Ignore any query string (e.g. a cache-buster) when matching routes.
+    const route = (req.url || '').split('?')[0];
+
+    if (req.method === 'GET' && route === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ ok: true }));
     }
 
-    if (req.method === 'POST' && req.url === '/state') {
+    if (req.method === 'POST' && route === '/state') {
       const TOKEN = getToken();
       if (TOKEN && req.headers['x-pet-token'] !== TOKEN) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -130,6 +140,7 @@ function startControlServer(port, onState, opts = {}) {
           mood: VALID_MOODS.has(data.mood) ? data.mood : 'idle',
           text: typeof data.text === 'string' ? data.text.slice(0, 280) : '',
           source: typeof data.source === 'string' ? data.source.slice(0, 40) : '',
+          session: typeof data.session === 'string' ? data.session.slice(0, 80) : '',
           ttl: Number.isFinite(data.ttl) ? Math.max(0, Math.min(data.ttl, 120000)) : 0,
           link: safeLink(data.link),
           linkText: typeof data.linkText === 'string' ? data.linkText.slice(0, 60) : '',

@@ -56,7 +56,16 @@ app.whenReady().then(async () => {
       await pause(450);
       fs.writeFileSync(path.join(scratch, skin + '-sleep.png'), (await win.webContents.capturePage()).toPNG());
       win.webContents.send('ai-state', { mood: 'idle' });
-      console.log('PASS 3D load, planted petting, sniff/paw/groom, wave and sleep:', skin);
+      await pause(1900); // let the wave settle back to idle
+      win.webContents.send('walk', { dir: 'right', ms: 1600 });
+      await pause(700);
+      assert(await read("document.getElementById('pet').classList.contains('face-right')"), 'walk must face its direction');
+      const walk = await win.webContents.capturePage();
+      assert(!walk.toPNG().equals(idle.toPNG()), 'walking must visibly change the frame');
+      fs.writeFileSync(path.join(scratch, skin + '-walk.png'), walk.toPNG());
+      await pause(1100);
+      assert(!(await read("document.getElementById('pet').classList.contains('walking')")), 'walk must end on its own');
+      console.log('PASS 3D load, planted petting, sniff/paw/groom, wave, sleep and walk:', skin);
       // Freeze animations so pixel comparisons isolate appearance changes.
       win.webContents.debugger.attach('1.3');
       await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {
@@ -118,7 +127,8 @@ app.whenReady().then(async () => {
     ipcMain.handle('settings:get', () => ({ name: 'Mochi', skin: 'kitten', color: 'green',
       palette: { green: ['#7ee8a0', '#45c97a'], pink: ['#ffc2d6', '#ff7eb6'], natural: ['#e9bd86', '#ac754b'] }, skins: ['slime', 'kitten', 'puppy'],
       cosmeticUnlocks: { none: 0, bowtie: 0, flower: 0, crown: 120 }, unlocked: ['none', 'bowtie', 'flower'] }));
-    ipcMain.on('settings:set', (_e, cfg) => { chosen = cfg.skin; });
+    const saves = [];
+    ipcMain.on('settings:set', (_e, cfg) => { saves.push(cfg); if (cfg.skin) chosen = cfg.skin; });
     const settings = new BrowserWindow({ width: 440, height: 850, show: false,
       webPreferences: { preload: path.resolve(__dirname, '../src/settings-preload.js'),
         contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
@@ -136,6 +146,15 @@ app.whenReady().then(async () => {
     await pause(250);
     assert(await settings.webContents.executeJavaScript("document.getElementById('model-preview').classList.contains('cosmetic-bowtie') && getComputedStyle(document.getElementById('model-preview')).getPropertyValue('--model-fur').trim() === '#ffc2d6'"));
     assert(await settings.webContents.executeJavaScript("[...document.querySelectorAll('#cosmetics .chip')].find(e => e.textContent.startsWith('Crown')).getAttribute('aria-disabled') === 'true'"));
+    assert.deepEqual(saves.find(c => c.color), { color: 'pink' }, 'a click must save only its own field');
+    // A change made elsewhere (e.g. muting from the tray) shows up live.
+    settings.webContents.send('settings:changed', { name: 'Mochi', skin: 'puppy', color: 'pink', muted: true,
+      palette: { green: ['#7ee8a0', '#45c97a'], pink: ['#ffc2d6', '#ff7eb6'] }, skins: ['slime', 'kitten', 'puppy'],
+      cosmeticUnlocks: { none: 0, bowtie: 0 }, unlocked: ['none', 'bowtie'], cosmetic: 'bowtie',
+      hotkeyErrors: { hotkey: 'Ctrl+X is already used by another app' } });
+    await pause(250);
+    assert.equal(await settings.webContents.executeJavaScript("document.getElementById('sound').checked"), false);
+    assert(await settings.webContents.executeJavaScript("document.getElementById('hotkeyHint').classList.contains('warn')"));
     fs.writeFileSync(path.join(scratch, 'settings.png'), (await settings.webContents.capturePage()).toPNG());
     assert.deepEqual(errors, []);
     console.log('PASS settings selection and live 3D preview');

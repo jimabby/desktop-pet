@@ -154,7 +154,7 @@ def build(kind):
         mod = o.modifiers.new('Articulated','ARMATURE'); mod.object=arm
         o.parent = arm
     # Pose clips are baked on the rig and retained in both GLB and .blend.
-    for mood in ['idle','working','happy','sleeping','wave','dance','curious','shake','yawn','kiss','grabbed','petting','sniff','paw','groom']:
+    for mood in ['idle','working','happy','sleeping','wave','dance','curious','shake','yawn','kiss','grabbed','petting','sniff','paw','groom','walk']:
         arm.animation_data_create()
         action = bpy.data.actions.new(mood)
         arm.animation_data.action=action
@@ -215,6 +215,17 @@ def build(kind):
             if mood == 'wave':
                 b['Foreleg_R'].rotation_euler.z=1.95+.2*math.sin(t*3)
                 b['FrontPaw_R'].rotation_euler.z=.4*math.sin(t*3)
+            if mood == 'walk':
+                # Trot: diagonal pairs swing together, two strides per loop. The
+                # root stays put; the app moves the window under the pet.
+                b['Root'].location.y=.03*abs(math.sin(t*2))
+                for side, sign in [('L',1),('R',-1)]:
+                    b['Foreleg_'+side].rotation_euler.x=.42*math.sin(t*2)*sign
+                    b['FrontPaw_'+side].rotation_euler.x=.22*max(0,math.sin(t*2+.8)*sign)
+                    b['HindLeg_'+side].rotation_euler.x=-.38*math.sin(t*2)*sign
+                    b['HindPaw_'+side].rotation_euler.x=.2*max(0,-math.sin(t*2+.8)*sign)
+                b['Head'].rotation_euler.x=.04*math.sin(t*4)
+                b['Tail'].rotation_euler.y=(.18 if cat else .4)*math.sin(t*2)
             if mood == 'dance': b['Torso'].rotation_euler.z=.14*math.sin(t*2)
             if mood == 'curious': b['Head'].rotation_euler.z=.25*math.sin(t/2)
             if mood == 'shake':

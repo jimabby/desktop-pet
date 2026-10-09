@@ -19,12 +19,14 @@ is working**.
 - **Pick it up** — drag it around and it kicks its legs and squeals "wheee~",
   then lands with a squish. With **throw physics** on, *fling* it and it slides
   and bounces off the screen edges, **perching** if it lands near the top
-- **Wander mode** — left alone, the pet occasionally strolls a few px on its own
+- **Wander mode** — left alone and awake, the pet occasionally walks a short way,
+  facing where it's going (the 3D animals trot with a real walk cycle). It stays
+  put while asleep, busy, or waiting on you
 - **Skins** — pick **Slime**, **Kitten 3D**, or **Puppy 3D** in Settings
 - **Cosmetics** — wear a free **bow tie** or **flower**, then unlock **glasses**,
   a **cap**, **headphones**, a **scarf**, and a **crown** by completing tasks.
   The 3D accessories follow the pet’s head and body.
-- **Tricks on demand** — from the tray's **Tricks** menu make the pet **dance**
+- **Tricks on demand** — **right-click the pet** (or use the tray's **Tricks** menu) to make it **dance**
   (with music notes 🎵), **backflip**, **wave**, **spin**, **yawn & stretch**,
   **curious tilt**, **shake it off**, **blow a kiss**, **sniff around**, **give a paw**, or **groom**
 - **Hover to tickle** — rest your cursor on the pet (no click) and it giggles
@@ -43,22 +45,28 @@ is working**.
   without repeating the last idle action; yawns before falling asleep when ignored
 - **Respects "reduce motion"** — calms its looping animations if your OS asks
 - **Per-AI tint + badges** — a colored glow and badges show which assistant is driving it
-- **Multi-AI mode** — if Claude, ChatGPT, Gemini, etc. are active together, the pet switches into a team-up bounce
+- **Multi-AI and multi-session** — if Claude, ChatGPT, Gemini, etc. are active together, the
+  pet switches into a team-up bounce. Several Claude Code sessions are tracked separately
+  (the badge reads `C×2`): one finishing never clears another, and each session's
+  confirm prompt waits on its own (`+1 more waiting`)
 - **Context-usage ring** — a gauge around the pet fills (green → amber → red) as the
   conversation's context window fills up, with a compact `85k`-style token label
 - **Daily stats** — the tray's **Today** menu tallies per-AI tasks, active time,
   confirms, and errors (resets each day)
 - **Activity window** — tray ▸ **Activity…** charts the last 7 days of completed
   tasks, per-assistant totals for today, and the recent-event log
+- **While you were away** — hide the pet or step away from the computer, and when
+  you're back it sums up what happened (`while you were away: 3 done, 1 waiting on you`)
 - **Missed-event log** — the tray's **Recent** menu shows the last ~8 confirms,
   errors, and completions with how long ago they happened (repeats of the same
   event are folded together instead of flooding it)
 - **Name + color** — name your pet and pick its body color in **Settings…** (saved)
-- **Global hotkey** — show/hide the pet from anywhere (default `Cmd/Ctrl+Shift+P`)
+- **Global hotkeys** — show/hide the pet from anywhere (default `Cmd/Ctrl+Alt+Shift+P`),
+  and jump straight to the newest prompt waiting on you (default `Cmd/Ctrl+Alt+Shift+J`)
 - **Sound chimes** on done/error (toggle from the tray)
 - **Confirm prompts** — when an AI needs your approval, the pet bounces with a `!`,
-  chimes, and shows a clickable link back to your editor; **left unanswered it keeps
-  nudging**, getting more insistent until you respond
+  chimes, and shows a clickable link back to your editor (or, on macOS, your
+  terminal); **left unanswered it keeps nudging**, getting more insistent until you respond
 - **Notifies you when hidden** — hide the pet and a confirm or error still
   reaches you as a system notification; click it to bring the pet back (or jump
   straight to the editor)
@@ -77,7 +85,7 @@ is working**.
 
 ## Run it
 
-Requires [Node.js](https://nodejs.org) 18+.
+Requires [Node.js](https://nodejs.org) 22.12+ (needed by Electron 44).
 
 ```bash
 cd desktop-pet
@@ -99,7 +107,7 @@ the **tray icon** (the menu bar on macOS; there's no dock icon by design).
 
 ## Customizing your pet
 
-Open **Settings…** from the tray (or **right-click the pet**). The window covers:
+Open **Settings…** from the tray (or **right-click the pet ▸ Settings…**). The window covers:
 
 - **Name** — it'll introduce itself now and then, and the name shows in the tray
 - **Color** — pick a body/fur color; Natural restores the original animal coat.
@@ -110,9 +118,14 @@ Open **Settings…** from the tray (or **right-click the pet**). The window cove
   at 120)
 - **Behavior** — toggle sound effects, time-of-day tint, wander, and throw physics
 - **Focus** — set the work/break minutes for the Pomodoro timer
-- **Advanced** — set the global show/hide **hotkey** (an Electron accelerator,
-  blank to disable), the **stress threshold** (k tokens before the pet looks
-  strained, 0 = off), and the control-server **token** (see *Locking it down*)
+- **Claude Code** — one click installs the pet's hooks into `~/.claude/settings.json`
+- **Advanced** — the **show/hide** and **answer-confirm** shortcuts (Electron
+  accelerators, blank to disable; a shortcut another app already owns is flagged),
+  the **stress threshold** (k tokens before the pet looks strained, 0 = off), and
+  the control-server **token** (see *The token*)
+
+Settings saves each control as you change it, and stays in step with changes made
+from the tray while it's open.
 
 Everything is remembered across restarts. The wander / physics / time-of-day
 toggles are also in the tray's **Behavior** submenu, and a focus session starts
@@ -206,14 +219,17 @@ curl -s localhost:7337/state -H "X-Pet-Token: $TOKEN" \
   -H 'Content-Type: application/json' -d '{"mood":"happy"}'
 ```
 
-Editing the token in Settings takes effect live, with no restart. Clearing it
-disables auth entirely — which leaves the pet open to any page in your browser.
+Editing the token in Settings takes effect live, with no restart. It can't be
+cleared (that would open the pet to any page in your browser); use
+**Regenerate** if it has leaked. The hook picks a new token up automatically.
 
 **A note on bubble links.** A confirm prompt can carry a link back to your
 editor, and clicking the bubble's link opens it. Poking the pet only *dismisses*
 the nudge — it never follows the link — so an incidental click can't send you
 somewhere you didn't read. Only `http`, `https`, `vscode`, `vscode-insiders`,
-`cursor`, and `windsurf` URLs are accepted at all.
+`cursor`, and `windsurf` URLs are accepted, plus the pet's own
+`pet-focus://app/<TERM_PROGRAM>`, which only ever brings one of a fixed list of
+terminal apps to the front (macOS).
 
 ### If port 7337 is taken
 
@@ -225,9 +241,15 @@ ignoring every event.
 
 ### Claude Code (automatic)
 
-1. Open [hooks/claude-settings-example.json](hooks/claude-settings-example.json).
-2. Replace `ABSOLUTE_PATH` with the full path to this folder.
-3. Merge the `hooks` block into your `~/.claude/settings.json`.
+Open **Settings ▸ Claude Code ▸ Install Claude Code hooks…**. It shows exactly
+what it will add, backs up `~/.claude/settings.json` to `settings.json.pet-backup`,
+keeps all your other settings and hooks, and replaces pet hooks left over from an
+older install path. The hooks run `node`, so Node.js must be on your PATH.
+
+To do it by hand instead: open
+[hooks/claude-settings-example.json](hooks/claude-settings-example.json), replace
+`ABSOLUTE_PATH` with the full path to this folder, and merge the `hooks` block into
+your `~/.claude/settings.json`.
 
 Now the pet thinks when you submit a prompt, works while tools run, and cheers
 when Claude finishes (and quiets down on session end). The hook script fails
@@ -235,9 +257,14 @@ silently if the pet isn't running. If you set a `PET_TOKEN`, export it in the
 environment Claude Code runs in too.
 
 **Confirm / permission prompts.** When Claude needs your approval to run a tool
-it fires a **`PermissionRequest`** event (idle/other notices use `Notification`);
-the pet handles both — it bounces with a `!` badge, chimes, and shows the message
-plus an **"Open editor →"** link. Clicking the link focuses your editor on the project so you can answer.
+it fires a **`PermissionRequest`** event, and usually a `permission_prompt`
+`Notification` too; the pet treats them as one prompt (counted once, notified
+once). It bounces with a `!` badge, chimes, and shows the message plus an
+**"Open editor →"** link. Clicking the link focuses your editor on the project so you can answer.
+The idle "Claude is waiting for your input" reminder is ignored — it isn't a
+prompt, just the end of a turn. Subagents finishing count as progress, not as
+finished tasks. Each event carries Claude Code's `session_id`, so separate
+sessions don't interfere with each other.
 Poking the pet only dismisses its reminder. Make sure the
 `PermissionRequest` hook from the example is in your settings (older setups that
 only wired up `Notification` won't react to permission prompts). The link is
@@ -247,8 +274,15 @@ auto-built from the project path and editor:
   `windsurf`). Default: auto-detected from the terminal, falling back to `vscode`.
 - `PET_OPEN_URL` — override the link entirely with a URL of your choice.
 
-If Claude Code is running in a plain terminal (no detectable editor), the pet
-still bounces + chimes and shows the message — just without a clickable link.
+If Claude Code is running in a plain terminal on macOS, the link reads **"Open
+terminal →"** and brings that terminal app forward (iTerm, Terminal, Warp,
+Ghostty, WezTerm, Hyper, Tabby, kitty, Alacritty — detected from
+`TERM_PROGRAM`). Elsewhere the pet still bounces + chimes and shows the message,
+just without a clickable link.
+
+The **answer-confirm shortcut** (`Cmd/Ctrl+Alt+Shift+J` by default) does the same
+for the newest waiting prompt without reaching for the mouse, and stops the pet
+nudging about it.
 
 ### ChatGPT / Gemini web (automatic, via userscript)
 
@@ -315,7 +349,8 @@ port, which it otherwise reads from the app's config.
 
 ```
 src/
-  main.js            Electron main: window, tray, drag, throw physics, wander, focus timer, hotkey, stats, notifications, updates, starts the server
+  main.js            Electron main: window, tray, play menu, drag, throw physics, wander, focus timer, hotkeys, stats, away summary, notifications, updates, starts the server
+  claude-hooks.js    Pure merge of the pet's hooks into Claude Code's settings.json (used by the installer)
   preload.js         Safe IPC bridge to the pet renderer
   settings-preload.js  IPC bridge for the settings window
   stats-preload.js   Read-only IPC bridge for the activity window
@@ -342,6 +377,9 @@ build/
 pettest.js           Server + hook + quiet-hours tests (npm run test:server)
 wiringtest.js        Loads main.js against a stubbed Electron to check the IPC
                      handlers, tray menu, and settings/stats payloads (npm run test:wiring)
+renderertest.js      Runs pet.js against a tiny DOM + fake clock: gestures, confirms,
+                     sessions, sleep, walking
+.github/workflows/   CI: npm test + 3D bundle build on every push and PR
 ```
 
 ## Swapping in real art (sprite sheets)
@@ -368,10 +406,11 @@ Then set **Columns**, **Rows**, and **FPS** to match. A sheet with fewer than
 seven rows just reuses its last row for the remaining moods, so a two-row
 idle/working sheet still animates everything. PNG, GIF, or WebP, up to 4 MB.
 
-The image is stored inside the pet's own config (as a data URI) rather than
-referenced by path — the renderer's Content-Security-Policy only allows
-same-origin resources, and a packaged app can't write into its own read-only
-bundle. So your sheet keeps working if you move or delete the original file.
+The image is copied into the app's userData dir (as `sprite.png`/`.gif`/`.webp`,
+next to `pet-config.json`), so your sheet keeps working if you move or delete the
+original. It is kept out of the config file itself, which is rewritten on every
+AI event and read by every hook call. Configs from older versions that held the
+image inline are moved over automatically.
 
 When a sprite is active the CSS character is hidden and the sheet plays the
 matching mood row; cosmetics, the AI ring, badges, speech bubble, and particles
@@ -388,7 +427,7 @@ counts and per-mood FPS:
 ```json
 {
   "sprite": {
-    "url": "data:image/png;base64,…  (or a path under src/renderer/)",
+    "file": "sprite.png",   // in the userData dir — or "url": a path under src/renderer/
     "cols": 6,
     "rows": 7,
     "fps": 8,
@@ -424,6 +463,10 @@ of the time.
   clicking it brings the pet back, or jumps straight to your editor when the
   event carried a link. Turn it off in Settings ▸ Behavior.
 - **Mute** silences chimes without hiding anything.
+- **While you were away** — when you come back (unhiding the pet, or returning
+  after 5+ minutes away from the keyboard) it sums up what finished, what failed,
+  and what's still waiting on you. The once-a-day greeting likewise waits for your
+  first activity of the day rather than firing at midnight.
 
 ## Seeing what happened
 
@@ -459,19 +502,18 @@ has `pet-notify.js` to point their Claude Code hooks at.
 
 Packaged builds check for a new release on launch and offer a **Restart to
 update** item in the tray once one has downloaded. (Toggle the check in
-Settings ▸ Advanced.) This needs an update channel, which means adding a
-`publish` block to the `build` section of `package.json` — for GitHub Releases:
+Settings ▸ Advanced.) The update channel is GitHub Releases, configured in the
+`build.publish` block of `package.json`:
 
 ```jsonc
-"publish": [{ "provider": "github", "owner": "your-user", "repo": "desktop-pet" }]
+"publish": [{ "provider": "github", "owner": "jimabby", "repo": "desktop-pet" }]
 ```
 
-Then `GH_TOKEN=… npm run dist:mac -- --publish always`. electron-builder writes
-`app-update.yml` into the bundle and uploads the artifacts plus the
-`latest-*.yml` manifests the updater reads.
-
-Without a `publish` block nothing breaks — the check just reports that no update
-channel is configured, and **Check for updates…** stays disabled in a dev run.
+Bump `version`, then `GH_TOKEN=… npm run dist:mac -- --publish always`.
+electron-builder writes `app-update.yml` into the bundle and uploads the
+artifacts plus the `latest-*.yml` manifests the updater reads to a draft
+release; publish the draft to ship it. **Check for updates…** stays disabled in a
+dev run.
 Updates on macOS require the build to be **signed** (see below); an unsigned app
 can download an update but not install it.
 
@@ -526,7 +568,7 @@ electron-builder at it with `CSC_LINK=/path/to/cert.p12` and
 
 ## Blender characters: Kitten 3D / Puppy 3D
 
-Run `npm start`, right-click the pet, then choose **Settings → Appearance →
+Run `npm start`, right-click the pet, then choose **Settings… → Appearance →
 Kitten 3D / Puppy 3D**. The selection is saved. Settings shows a live 3D preview.
 If a custom sprite sheet is active, choose **Sprite art → Use drawn pet** to
 reveal the 3D character. The color palette changes their fur and markings while
@@ -537,8 +579,10 @@ at 120. Select **None** to remove the equipped accessory.
 
 These are original Blender models with 18 bones each: torso, head, jaw, eyes,
 independent ears, four legs, four paws and a two-part tail, plus the root.
-They contain 15 animation clips: idle, working, happy, sleeping, wave, dance,
-curious, shake, yawn, kiss, grabbed, petting, sniff, paw and groom. Use the tray's **Tricks** menu to try them.
+They contain 16 animation clips: idle, working, happy, sleeping, wave, dance,
+curious, shake, yawn, kiss, grabbed, petting, sniff, paw, groom and walk (a trot
+played while the pet wanders, turned toward the direction of travel). Right-click
+the pet to try the tricks.
 Cursor head tracking and blinking layer over the animations. Existing spin and
 backflip effects move the whole character. Reduced motion uses a still pose;
 hidden windows stop rendering. If WebGL/model loading fails, the drawn pet remains.

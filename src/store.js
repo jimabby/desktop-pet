@@ -23,7 +23,12 @@ function createStore(app) {
     timeOfDay: true, // tint the pet warmer at night / brighter by day
     wander: true, // let the pet stroll a few px on its own when idle
     physics: true, // fling/throw the pet so it slides + bounces off edges
-    hotkey: 'CommandOrControl+Shift+P', // global show/hide toggle ('' to disable)
+    // Global shortcuts ('' to disable). Deliberately three-modifier: these are
+    // registered system-wide and would otherwise steal app shortcuts such as
+    // VS Code's Cmd/Ctrl+Shift+P command palette.
+    hotkey: 'CommandOrControl+Alt+Shift+P', // show/hide the pet
+    confirmHotkey: 'CommandOrControl+Alt+Shift+J', // jump to the latest waiting confirm
+    configVersion: 0, // bumped by migrateConfig() in main.js
     // Shared secret the control server requires. Generated on first run (see
     // ensureToken in main.js) so the pet is never open to any web page you
     // happen to have loaded; the hook reads it back out of this same file.
@@ -37,7 +42,7 @@ function createStore(app) {
     // otherwise the one moment that matters is invisible.
     notifyWhenHidden: true,
     autoUpdate: true, // check for new releases on launch (needs a publish target)
-    sprite: null, // optional sprite-sheet art: { url, cols, rows, fps?, moods }
+    sprite: null, // optional sprite-sheet art: { file, name, cols, rows, fps, moods } (image in userData)
     // Do-not-disturb window. While active the pet stays silent and still: no
     // chimes, no notifications, no escalating nudges.
     quiet: { enabled: false, from: '22:00', to: '08:00' },

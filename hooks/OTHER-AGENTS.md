@@ -90,7 +90,9 @@ curl -s localhost:7337/state \
 ```
 
 Fields: `mood` (idle | thinking | working | happy | stressed | sleeping |
-error), `text`, `source`, `ttl` (ms until the pet clears this source on its
+error), `text`, `source`, `session` (optional id that keeps several runs of one
+source apart, so one finishing doesn't clear another; an `idle` without a
+session clears every session of that source), `ttl` (ms until the pet clears this source on its
 own — **always set one** for a busy mood, or the pet stays busy forever if your
 script dies), `ctx` (context size in tokens, drives the usage ring), `attention`
 (true for a prompt that needs the user), `link` + `linkText` (a deep link the

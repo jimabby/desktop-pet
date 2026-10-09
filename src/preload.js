@@ -16,8 +16,15 @@ contextBridge.exposeInMainWorld('petAPI', {
   // Open a link from the bubble (e.g. jump back to the editor to confirm).
   openLink: (url) => ipcRenderer.send('open-link', url),
 
-  // Open the Settings window (e.g. from right-clicking the pet).
+  // Open the Settings window.
   openSettings: () => ipcRenderer.send('open-settings'),
+
+  // Right-click play menu (tricks, focus, settings), shown natively by main.
+  openMenu: () => ipcRenderer.send('pet-menu'),
+
+  // Tell main whether the pet is asleep / busy / waiting, so it only wanders
+  // when idle.
+  reportState: (st) => ipcRenderer.send('pet-state', st),
 
   // Events from main
   onClick: (cb) => ipcRenderer.on('pet-click', () => cb()),
@@ -29,5 +36,8 @@ contextBridge.exposeInMainWorld('petAPI', {
   onNotice: (cb) => ipcRenderer.on('notice', (_e, text) => cb(text)),
   onTrick: (cb) => ipcRenderer.on('pet-trick', (_e, name) => cb(name)),
   onDailyStats: (cb) => ipcRenderer.on('daily-stats', (_e, stats) => cb(stats)),
-  onWeeklyStats: (cb) => ipcRenderer.on('weekly-stats', (_e, stats) => cb(stats))
+  onWeeklyStats: (cb) => ipcRenderer.on('weekly-stats', (_e, stats) => cb(stats)),
+  onSprite: (cb) => ipcRenderer.on('sprite', (_e, sprite) => cb(sprite)),
+  onWalk: (cb) => ipcRenderer.on('walk', (_e, walk) => cb(walk)),
+  onConfirmAck: (cb) => ipcRenderer.on('confirm-ack', (_e, key) => cb(key))
 });

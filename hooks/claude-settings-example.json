@@ -1,5 +1,5 @@
 {
-  "_comment": "Merge the `hooks` block into your Claude Code settings.json (~/.claude/settings.json or .claude/settings.json). Replace ABSOLUTE_PATH with the full path to this repo. The script reads the hook event from stdin and tells the pet how to react. It fails silently if the pet app isn't running. If you launched the pet with PET_TOKEN set, also export the same PET_TOKEN in the environment Claude Code runs in.",
+  "_comment": "Easiest: Settings ▸ Claude Code ▸ Install Claude Code hooks… in the pet app does this merge for you (with a backup). By hand: merge the `hooks` block into your Claude Code settings.json (~/.claude/settings.json or .claude/settings.json). Replace ABSOLUTE_PATH with the full path to this repo. The script reads the hook event from stdin and tells the pet how to react. It fails silently if the pet app isn't running. If you launched the pet with PET_TOKEN set, also export the same PET_TOKEN in the environment Claude Code runs in.",
 
   "hooks": {
     "SessionStart": [

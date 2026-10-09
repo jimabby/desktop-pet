@@ -17,6 +17,9 @@
  *   PET_TOKEN         (optional; read from the app's config file when unset)
  *   PET_EDITOR_SCHEME (default "vscode"; e.g. "cursor", "vscode-insiders")
  *   PET_OPEN_URL      (optional; overrides the auto-built editor link entirely)
+ *
+ * Hook payloads carry a session_id, which is forwarded so the pet can tell two
+ * Claude Code sessions apart instead of letting one clear the other.
  */
 
 const http = require('http');
@@ -83,7 +86,9 @@ const EVENT_MOOD = {
   PermissionRequest: { mood: 'thinking', text: 'can I run this? 👀', ttl: 120000 },
   Notification: { mood: 'thinking', text: 'needs you 👀', ttl: 60000 },
   Stop: { mood: 'happy', text: 'done!', ttl: 4000 },
-  SubagentStop: { mood: 'happy', text: 'subtask done!', ttl: 4000 },
+  // A subagent finishing is progress, not the end of the task: the parent is
+  // still working, and counting it as "done" would inflate the task tally.
+  SubagentStop: { mood: 'working', text: 'subtask done!', ttl: ACTIVE_TTL },
   SessionStart: { mood: 'happy', text: 'hello!', ttl: 3000 },
   SessionEnd: { mood: 'idle', text: '', ttl: 0 }
 };
@@ -156,17 +161,25 @@ function inEditor() {
   );
 }
 
-// Build a deep link that focuses the editor on the project, so clicking the
-// pet's bubble jumps straight back to the confirm prompt. Returns '' if we
-// can't build one (e.g. Claude Code running in a plain terminal, no cwd).
+// Build a deep link that jumps straight back to the confirm prompt: the editor
+// window for the project, or (macOS) the terminal app Claude Code is running
+// in. Returns { link, text }, with an empty link if we can't build one.
 function buildOpenLink(cwd) {
-  if (process.env.PET_OPEN_URL) return process.env.PET_OPEN_URL;
-  if (!cwd || !inEditor()) return '';
-  const scheme =
-    process.env.PET_EDITOR_SCHEME ||
-    (process.env.CURSOR_TRACE_ID ? 'cursor' : 'vscode');
-  // vscode://file/<absolute path> opens & focuses that folder's window.
-  return `${scheme}://file${encodeURI(cwd)}`;
+  if (process.env.PET_OPEN_URL) return { link: process.env.PET_OPEN_URL, text: 'Open →' };
+  if (cwd && inEditor()) {
+    const scheme =
+      process.env.PET_EDITOR_SCHEME ||
+      (process.env.CURSOR_TRACE_ID ? 'cursor' : 'vscode');
+    // vscode://file/<absolute path> opens & focuses that folder's window.
+    return { link: `${scheme}://file${encodeURI(cwd)}`, text: 'Open editor →' };
+  }
+  // The pet only knows how to focus terminals on macOS, and only ones on its
+  // own allowlist — it checks the name again before acting on it.
+  const term = process.env.TERM_PROGRAM;
+  if (process.platform === 'darwin' && term && /^[\w.-]{1,40}$/.test(term)) {
+    return { link: `pet-focus://app/${encodeURIComponent(term)}`, text: 'Open terminal →' };
+  }
+  return { link: '', text: '' };
 }
 
 // Pull the latest context size (in tokens) from a Claude Code transcript. The
@@ -221,8 +234,11 @@ function contextTokens(transcriptPath) {
   return 0;
 }
 
+// Set from the hook payload; '' for CLI use.
+let SESSION = '';
+
 function send(state) {
-  const body = JSON.stringify({ source: SOURCE, ...state });
+  const body = JSON.stringify({ source: SOURCE, ...(SESSION ? { session: SESSION } : {}), ...state });
   const headers = {
     'Content-Type': 'application/json',
     'Content-Length': Buffer.byteLength(body)
@@ -286,6 +302,15 @@ if (moodArg) {
     }
     const state = EVENT_MOOD[payload.hook_event_name];
     if (!state) return;
+    if (typeof payload.session_id === 'string') SESSION = payload.session_id.slice(0, 80);
+
+    // Notification covers several situations. Only the ones that block on the
+    // user deserve the confirm treatment: the idle "waiting for your input"
+    // reminder fires after every finished turn, and auth_success is just news.
+    const kind = payload.notification_type;
+    if (payload.hook_event_name === 'Notification' && (kind === 'idle_prompt' || kind === 'auth_success')) {
+      return;
+    }
 
     // PermissionRequest (a confirm/permission dialog) and Notification (idle /
     // other notices) both mean Claude needs the user. Carry the real message +
@@ -295,7 +320,7 @@ if (moodArg) {
       payload.hook_event_name === 'PermissionRequest' ||
       payload.hook_event_name === 'Notification'
     ) {
-      const link = buildOpenLink(payload.cwd);
+      const { link, text: linkText } = buildOpenLink(payload.cwd);
       // Prefer Claude's own message; for a bare permission request, name the
       // tool it wants to run (e.g. "allow Bash?").
       let text = payload.message ? String(payload.message) : '';
@@ -306,7 +331,7 @@ if (moodArg) {
         text: String(text).slice(0, 160),
         ttl: state.ttl,
         link,
-        linkText: link ? 'Open editor →' : '',
+        linkText,
         // Always grab the user's attention for a confirm prompt — the link is a
         // nice-to-have shortcut, not the trigger. (A plain-terminal Claude Code
         // builds no link, but the pet should still bounce + chime.)

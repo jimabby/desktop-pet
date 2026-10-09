@@ -116,6 +116,18 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   await request(PORT, '/state', { mood: 'thinking', link: 'javascript:alert(1)' });
   eq('javascript: link is rejected', last().link, '');
 
+  await request(PORT, '/state', { mood: 'thinking', link: 'pet-focus://app/iTerm.app' });
+  eq('pet-focus terminal link is kept', last().link, 'pet-focus://app/iTerm.app');
+
+  await request(PORT, '/state', { mood: 'working', source: 'claude', session: 'abc-123' });
+  eq('session passes through', last().session, 'abc-123');
+
+  await request(PORT, '/state', { mood: 'working', session: 's'.repeat(300) });
+  eq('session is truncated', last().session.length, 80);
+
+  eq('query string is ignored when routing',
+    (await request(PORT, '/state?x=1', { mood: 'happy' })).status, 200);
+
   const bad = await request(PORT, '/state', undefined, {});
   eq('empty POST body is accepted as idle', bad.status, 404); // GET /state -> 404
 
@@ -194,6 +206,34 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   check('PermissionRequest names the tool', last().text.includes('Bash'), last().text);
 
   received.length = 0;
+  await notify([], '{"hook_event_name":"Stop","session_id":"sess-1"}');
+  await wait(200);
+  eq('hook forwards the session id', last().session, 'sess-1');
+
+  received.length = 0;
+  await notify([], '{"hook_event_name":"SubagentStop"}');
+  await wait(200);
+  eq('SubagentStop keeps the parent working, not "done"', last().mood, 'working');
+
+  received.length = 0;
+  await notify([], '{"hook_event_name":"Notification","notification_type":"idle_prompt","message":"Claude is waiting for your input"}');
+  await wait(200);
+  eq('idle reminder is not treated as a confirm', received.length, 0);
+
+  received.length = 0;
+  await notify([], '{"hook_event_name":"Notification","notification_type":"permission_prompt","message":"Claude needs your permission to use Bash"}');
+  await wait(200);
+  eq('permission_prompt notification asks for attention', last().attention, true);
+
+  received.length = 0;
+  await notify([], '{"hook_event_name":"PermissionRequest","tool_name":"Bash"}',
+    { TERM_PROGRAM: 'iTerm.app', VSCODE_PID: '', VSCODE_GIT_IPC_HANDLE: '', CURSOR_TRACE_ID: '' });
+  await wait(200);
+  if (process.platform === 'darwin') {
+    eq('terminal confirm links back to the terminal', last().link, 'pet-focus://app/iTerm.app');
+  }
+
+  received.length = 0;
   await notify([], '{"hook_event_name":"NotAThing"}');
   await wait(200);
   eq('unknown hook event sends nothing', received.length, 0);
@@ -235,6 +275,37 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   check('unparseable bounds are ignored',
     !isQuietNow({ enabled: true, from: 'soon', to: '08:00' }, at(23)));
   check('missing config is not quiet', !isQuietNow(undefined, at(23)));
+
+  console.log('\n— Claude Code hook install —');
+  const { mergePetHooks, petHooksInstalled, PET_HOOK_EVENTS } = require('./src/claude-hooks');
+  const CMD = 'node "/new/hooks/pet-notify.js"';
+  const existing = {
+    model: 'opus',
+    hooks: {
+      Stop: [{ hooks: [
+        { type: 'command', command: 'say done' },
+        { type: 'command', command: 'node /old/path/pet-notify.js' }
+      ] }],
+      PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'audit.sh' }] }]
+    }
+  };
+  const merged = mergePetHooks(existing, CMD);
+  check('merge reports a change', merged.changed);
+  eq('unrelated settings are kept', merged.settings.model, 'opus');
+  check('other hooks in a shared group are kept',
+    merged.settings.hooks.Stop.some((g) => g.hooks.some((h) => h.command === 'say done')));
+  check('stale pet hook paths are replaced',
+    !JSON.stringify(merged.settings).includes('/old/path/pet-notify.js'));
+  check('other PreToolUse matchers are kept',
+    merged.settings.hooks.PreToolUse.some((g) => g.matcher === 'Bash'));
+  check('every pet event is installed', petHooksInstalled(merged.settings, CMD));
+  eq('tool events get the * matcher',
+    merged.settings.hooks.PostToolUse.find((g) => g.hooks[0].command === CMD).matcher, '*');
+  check('merging again changes nothing', !mergePetHooks(merged.settings, CMD).changed);
+  check('input is not mutated', existing.hooks.Stop[0].hooks.length === 2 && !existing.hooks.Notification);
+  check('fresh settings get every event',
+    Object.keys(PET_HOOK_EVENTS).every((e) => mergePetHooks({}, CMD).settings.hooks[e].length === 1));
+  check('not installed when missing', !petHooksInstalled({}, CMD));
 
   console.log(`\n${checks - failures}/${checks} checks passed`);
   process.exit(failures ? 1 : 0);

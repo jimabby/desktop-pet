@@ -1170,3 +1170,23 @@ body {
 @media (prefers-reduced-motion: reduce) {
   #pet:is(.act-sniff,.act-paw,.act-groom) * { animation: none !important; }
 }
+
+/* ---------- Walking (wander) ---------- */
+/* Main moves the window; this just makes the drawn pet waddle along, leaning
+   into the direction of travel, with its feet stepping in turn. */
+#pet.walking:not(.has-model) { animation: walk-bob 0.36s ease-in-out infinite; }
+#pet.walking.face-left:not(.has-model) .body { transform: rotate(-5deg); }
+#pet.walking.face-right:not(.has-model) .body { transform: rotate(5deg); }
+#pet.walking .foot { animation: walk-step 0.36s ease-in-out infinite; }
+#pet.walking .foot.right { animation-delay: 0.18s; }
+@keyframes walk-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+@keyframes walk-step {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #pet.walking, #pet.walking .foot { animation: none; }
+}
