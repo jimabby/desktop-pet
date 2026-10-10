@@ -1,3 +1,5 @@
+For the latest audit and implementation follow-up, see [PROJECT-AUDIT.md](PROJECT-AUDIT.md).
+
 # Project review
 
 Reviewed the Electron main process, IPC bridges, renderer behavior and styles,

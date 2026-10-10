@@ -73,6 +73,7 @@ function renderSwatches() {
     makePressable(sw, () => {
       selectedColor = key;
       renderSwatches();
+      swatchesEl.querySelector('[aria-pressed="true"]')?.focus();
       renderPreview();
       save({ color: key });
     }, { selected: key === selectedColor });
@@ -89,6 +90,7 @@ function renderSkins() {
     makePressable(chip, () => {
       selectedSkin = key;
       renderSkins();
+      skinsEl.querySelector('[aria-pressed="true"]')?.focus();
       renderPreview();
       save({ skin: key });
     }, { selected: key === selectedSkin });
@@ -115,6 +117,7 @@ function renderCosmetics() {
     makePressable(chip, () => {
       selectedCosmetic = key;
       renderCosmetics();
+      cosmeticsEl.querySelector('[aria-pressed="true"]')?.focus();
       renderPreview();
       save({ cosmetic: key });
     }, { disabled: !isUnlocked, selected: key === selectedCosmetic });
@@ -237,6 +240,9 @@ $('done').addEventListener('click', () => window.settingsAPI.close());
 // change elsewhere; a text field being edited is left alone so live updates
 // never yank the caret out from under you.
 function applyConfig(next) {
+  const focused = document.activeElement;
+  const focusGroup = focused?.parentElement?.id;
+  const focusIndex = ['swatches','skins','cosmetics'].includes(focusGroup) ? [...focused.parentElement.children].indexOf(focused) : -1;
   cfg = next;
   palette = cfg.palette || {};
   selectedColor = cfg.color && palette[cfg.color] ? cfg.color : Object.keys(palette)[0];
@@ -258,6 +264,9 @@ function applyConfig(next) {
   setValue($('stress'), Math.round((cfg.stressTokens || 0) / 1000));
   setValue($('ctxMax'), Math.round((cfg.ctxMax || 200000) / 1000));
   setValue($('token'), cfg.token || '');
+  $('token').disabled = !!cfg.tokenLocked;
+  $('regenToken').disabled = !!cfg.tokenLocked;
+  if (cfg.tokenLocked) $('tokenHint').textContent = 'Overridden by PET_TOKEN. Change the environment and restart to edit it.';
   setValue($('focusWork'), (cfg.focus && cfg.focus.work) || 25);
   setValue($('focusBreak'), (cfg.focus && cfg.focus.break) || 5);
 
@@ -300,6 +309,7 @@ function applyConfig(next) {
   renderSkins();
   renderCosmetics();
   renderPreview();
+  if (focusIndex >= 0) $(focusGroup).children[focusIndex]?.focus();
 }
 
 window.settingsAPI.onChanged(applyConfig);

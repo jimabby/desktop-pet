@@ -35,6 +35,8 @@
   // Which site are we on -> which AI label/tint the pet should use.
   const host = location.hostname;
   const SOURCE = host.includes('gemini') ? 'gemini' : 'chatgpt';
+  const SESSION = crypto.randomUUID();
+  let lastWarning = 0;
   const NAME = SOURCE === 'gemini' ? 'Gemini' : 'ChatGPT';
 
   // Keep the "working" state alive while it streams; each ping refreshes this
@@ -55,9 +57,9 @@
     fetch(ENDPOINT, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ source: SOURCE, ...state })
-    }).catch(() => {
-      /* pet not running — ignore so we never spam the console */
+      body: JSON.stringify({ source: SOURCE, session: SESSION, ...state })
+    }).then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}: check Desktop Pet token and port`); }).catch(error => {
+      if (Date.now() - lastWarning > 60000) { console.warn('[Desktop Pet]', error.message); lastWarning = Date.now(); }
     });
   }
 

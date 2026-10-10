@@ -1,0 +1,46 @@
+#companion section {
+  border-top: 1px solid #e4e6eb;
+  padding: 8px 0 16px;
+}
+#companion p {
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+#companion button,
+#companion select {
+  font: inherit;
+  border: 1px solid #c7ccd6;
+  border-radius: 7px;
+  padding: 7px 10px;
+  background: #fff;
+  color: #283342;
+  margin: 3px;
+}
+#companion button {
+  cursor: pointer;
+}
+#companion button:hover {
+  background: #edf7f0;
+}
+#companion button:focus-visible,
+#companion select:focus-visible {
+  outline: 3px solid #4f9871;
+}
+#companion label {
+  display: block;
+  margin: 6px 0;
+}
+#companion article {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #f0f3f7;
+  margin: 8px 0;
+}
+#companion-status {
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  padding: 10px;
+  border-top: 1px solid #ddd;
+  overflow-wrap: anywhere;
+}

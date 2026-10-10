@@ -144,3 +144,5 @@ window.statsAPI.onActivity(render);
 (async () => {
   render(await window.statsAPI.get());
 })();
+
+window.addEventListener('activity-refresh', e => render(e.detail));

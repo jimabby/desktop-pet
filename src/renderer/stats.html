@@ -77,9 +77,12 @@
       li .ago { color: #9aa0ad; font-size: 10.5px; white-space: nowrap; }
       .empty { color: #9aa0ad; font-size: 12px; padding: 10px 2px; }
     </style>
+    <link rel="stylesheet" href="companion.css" />
   </head>
   <body>
-    <h1>📊 Activity</h1>
+    <h1>🐾 Companion center</h1>
+    <div id="companion"></div>
+    <h2>Activity</h2>
 
     <div class="cards">
       <div class="card"><div class="value" id="week-tasks">0</div><div class="label">tasks this week</div></div>
@@ -96,6 +99,8 @@
     <h2>Recent</h2>
     <ul id="events"></ul>
 
+    <p id="companion-status" role="status" aria-live="polite"></p>
     <script src="stats.js"></script>
+    <script src="companion.js"></script>
   </body>
 </html>

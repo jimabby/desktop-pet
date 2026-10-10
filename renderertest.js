@@ -152,3 +152,36 @@ function harness() {
   assert(!h.node('pet').classList.contains('walking'), 'a busy pet should not walk');
 }
 console.log('Renderer regressions passed: gestures, AI interruption, confirmation, sleep, focus, sessions and walking.');
+
+{
+  const h = harness();
+  h.events.onAiState({source:'claude',session:'A',mood:'thinking',event:'confirm',attention:true,text:'allow?',link:'https://example.com'});
+  h.events.onNotice('good morning');
+  assert(h.node('bubble-text').textContent.includes('allow?'));
+  assert.equal(h.run('pendingLink'),'https://example.com');
+  h.events.onFocus({phase:'break',minutes:5});
+  assert.equal(h.run('currentMood'),'stressed');
+  h.events.onAiState({source:'claude',session:'A',mood:'idle'});
+  assert.equal(h.run('currentMood'),'sleeping');
+  h.events.onAiState({source:'claude',session:'B',mood:'working',ttl:1000});
+  h.advance(1100);
+  assert.equal(h.run('currentMood'),'sleeping');
+}
+{
+  const h = harness();
+  h.events.onAiState({source:'claude',session:'A',mood:'thinking',attention:true,text:'first'});
+  h.events.onAiState({source:'claude',session:'B',mood:'thinking',attention:true,text:'second'});
+  h.events.onClick();
+  assert.equal(h.run('pendingConfirms.size'),1,'poke acknowledges only the shown prompt');
+  h.events.onAiState({source:'claude',session:'B',mood:'thinking',attention:true,text:'second',suppressed:true});
+  assert.equal(h.run('pendingConfirms.size'),1,'duplicate acknowledged prompt is not reopened');
+}
+console.log('Renderer audit regressions passed: prompt priority, per-session acknowledgement and focus restoration.');
+
+{
+  const h=harness();
+  h.events.onAiState({source:'claude',session:'A',mood:'thinking',attention:true,text:'allow?',link:'https://example.com'});
+  h.events.onAiState({source:'claude',session:'A',mood:'working',text:''});
+  assert.equal(h.run('pendingLink'),'','resolved prompt link must disappear even on a silent busy event');
+  assert(!h.run('confirmPending'));
+}

@@ -96,6 +96,12 @@ function startControlServer(port, onState, opts = {}) {
     // Ignore any query string (e.g. a cache-buster) when matching routes.
     const route = (req.url || '').split('?')[0];
 
+    if (req.method === 'GET' && route === '/connection') {
+      const token = getToken();
+      res.writeHead(token && req.headers['x-pet-token'] !== token ? 401 : 200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: !token || req.headers['x-pet-token'] === token }));
+    }
+
     if (req.method === 'GET' && route === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ ok: true }));
@@ -144,6 +150,10 @@ function startControlServer(port, onState, opts = {}) {
           mood: VALID_MOODS.has(data.mood) ? data.mood : 'idle',
           text: typeof data.text === 'string' ? data.text.slice(0, 280) : '',
           source: typeof data.source === 'string' ? data.source.slice(0, 40) : '',
+          event: ['start', 'busy', 'done', 'error', 'confirm', 'idle', 'session-start', 'session-end'].includes(data.event) ? data.event : '',
+          eventId: typeof data.eventId === 'string' ? data.eventId.slice(0, 160) : '',
+          project: typeof data.project === 'string' ? data.project.slice(0, 120) : '',
+          leaseMs: Number.isFinite(data.leaseMs) ? Math.max(0, Math.min(data.leaseMs, 3600000)) : 0,
           session: typeof data.session === 'string' ? data.session.slice(0, 80) : '',
           ttl: Number.isFinite(data.ttl) ? Math.max(0, Math.min(data.ttl, 120000)) : 0,
           link: safeLink(data.link),

@@ -83,6 +83,69 @@ is working**.
   you have loaded can puppet your pet
 - **Auto-update** for packaged builds published with an update channel
 
+## Companion center
+
+Open **Companion center…** from the tray or the pet’s right-click menu. The
+Activity window now includes:
+
+- **Connection diagnostics**: last received assistant/session event, active port,
+  environment-token override status, an authenticated connection test, and a
+  redacted diagnostic export. Exported diagnostics omit tokens, project names,
+  messages, and session identifiers.
+- **Sessions & prompts**: project labels, separate working/waiting time, and
+  **Open**, **Acknowledge**, or **Snooze 5m** for each prompt. Acknowledging only
+  silences the pet; it does not approve a command in your assistant. A snoozed
+  prompt returns if its session has not moved on.
+- **Temporary quiet** for 15, 30, or 60 minutes, or until the current focus phase
+  ends. Presentation mode hides the pet and silences notifications while events
+  continue to be tracked. Ending it restores the previous visibility.
+- **Affection** that persists without hunger or decay. Petting, treats, and the
+  20-second cursor-chase toy earn points; milestones at 10, 30, and 100 trigger
+  a wave, dance, or spin. The toy stops for AI work, prompts, quiet mode, reduced
+  motion, dragging, or a hidden window.
+- **Perch & profiles**: choose a preferred monitor/corner and a stationary perch.
+  Work, Play, and Minimal provide presets; save your own current appearance,
+  size, sound, and movement preferences into any of those slots.
+- **Backup & export**: versioned settings backups include profiles, affection,
+  and managed sprite art. Tokens, login state, task history, and live sessions
+  are excluded. Restore validates the file and backs up the existing config
+  before applying it. Export today’s per-assistant statistics or the current/
+  recent session list as CSV. Session rows are retained in memory for up to an
+  hour after activity ends; task totals remain persisted across restarts.
+
+Task lifecycle is tracked independently of appearance. Starting a session no
+longer counts as completing work, high-context completions still count, and
+separate turns/sessions with identical messages remain independent. Active time
+is the sum of per-session working intervals, excluding permission waiting; two
+simultaneously working sessions contribute two intervals.
+
+Integrations may send `event` (`start`, `busy`, `done`, `error`, `confirm`,
+`idle`, `session-start`, or `session-end`), `eventId` (a retry identifier scoped
+to the source/session), `project` (a display label), and `leaseMs` alongside the
+existing mood fields. Without `event`, the legacy mood mapping remains supported.
+Use a new `eventId` for each distinct task event, and reuse it only when retrying
+that same event. The UI connection test calls authenticated `GET /connection`;
+`GET /health` remains public for discovery.
+
+The app writes a private `pet-connection.json` next to its config so hooks can
+find the running instance and effective authentication token. The hook installer
+passes the exact config location. `PET_CONFIG` or `pet --config /path/to/pet-config.json`
+selects a particular install; `PET_PORT` and `PET_TOKEN` remain explicit overrides.
+Settings marks an environment-managed token read-only.
+
+The browser bridge creates a separate session per page and reports connection
+errors in the browser console at most once per minute. `pet-wrap` (or the existing
+shell wrapper) creates a session per command and sends heartbeats until exit.
+Direct CLI calls share a session with their invoking shell; use `PET_SESSION`
+for explicit session identity. Manual failures exit nonzero; assistant hooks
+remain best-effort. Long tool hooks receive a bounded 30-minute lease; the
+`leaseMs` protocol field can request up to one hour. Wrappers renew their
+120-second lease every 30 seconds. Abandoned work therefore eventually expires.
+
+Linux’s **Launch at login** control is explicitly unavailable; configure startup
+through your desktop environment. The app now constrains the window size to
+its display work area and rescues it after monitor changes.
+
 ## Run it
 
 Requires [Node.js](https://nodejs.org) 22.12+ (needed by Electron 44).
@@ -143,11 +206,13 @@ your model has a different context window, launch with `PET_CTX_MAX` set (e.g.
 ## How AI reactions work
 
 When the app runs it starts a local control server on `http://127.0.0.1:7337`.
-Anything that POSTs a mood makes the pet react:
+Copy the token from Settings into `PET_TOKEN` before using raw HTTP. Anything
+that POSTs an authenticated mood makes the pet react:
 
 ```bash
 curl -s localhost:7337/state \
   -H 'Content-Type: application/json' \
+  -H "X-Pet-Token: $PET_TOKEN" \
   -d '{"mood":"working","text":"Refactoring auth...","source":"chatgpt","ttl":8000}'
 ```
 
@@ -492,7 +557,8 @@ npm run dist:win      # NSIS .exe installer
 npm run dist:linux    # AppImage
 ```
 
-Output lands in `dist/`. The same code produces all three. The app icon comes
+Output lands in `dist/`. macOS builds include both DMG and ZIP artifacts; publish
+both so the updater has its required ZIP payload. The same code produces all three. The app icon comes
 from [build/icon.png](build/icon.png) — electron-builder converts it to `.icns`
 and `.ico` per platform. The `hooks/` folder ships alongside the app (in
 `Contents/Resources/hooks` on macOS), so someone who installed the `.dmg` still
@@ -599,3 +665,17 @@ renderer bundle automatically. After source changes, use `npm run build:3d`.
 See [the Blender asset notes](assets/blender/README.md) for regeneration and
 editing instructions. Run `npm run test:3d` for GLB joint/animation checks and
 an isolated Electron/WebGL smoke test, including live Settings previews.
+
+## Validation commands
+
+```bash
+npm test          # server/hooks, main wiring, renderer, session clocks, config/export safety
+npm run test:3d   # actual Electron/WebGL models, cosmetics, animation and Settings checks
+npm run test:ui   # isolated real Electron companion center and integration checks
+npm audit         # includes the build dependency graph
+```
+
+The UI tests use temporary profiles and do not install hooks or edit your live
+pet configuration. Native signing/notarization, update installation, OS login,
+notifications, and monitor/drag behavior should also be checked on release
+hardware for each supported platform.

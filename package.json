@@ -1,10 +1,11 @@
 {
   "name": "desktop-pet",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A cross-platform desktop pet that reacts when your AI assistant is working.",
   "main": "src/main.js",
   "bin": {
-    "pet": "hooks/pet-notify.js"
+    "pet": "hooks/pet-notify.js",
+    "pet-wrap": "hooks/pet-wrap.js"
   },
   "engines": {
     "node": ">=22.12.0"
@@ -16,7 +17,7 @@
   "scripts": {
     "start": "node scripts/launch.js",
     "notify": "node hooks/pet-notify.js",
-    "test": "node pettest.js && node wiringtest.js && node renderertest.js",
+    "test": "node pettest.js && node wiringtest.js && node renderertest.js && node sessiontest.js",
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
     "dist:win": "electron-builder --win",
@@ -30,7 +31,8 @@
     "predist:win": "npm run build:3d",
     "predist:linux": "npm run build:3d",
     "test:3d": "npm run build:3d && node scripts/check-models.js",
-    "test:renderer": "node renderertest.js"
+    "test:renderer": "node renderertest.js",
+    "test:ui": "npm run build:3d && node scripts/run-electron-test.js"
   },
   "author": "",
   "license": "MIT",
@@ -49,7 +51,8 @@
     ],
     "mac": {
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ],
       "category": "public.app-category.entertainment",
       "extendInfo": {
@@ -91,5 +94,8 @@
   },
   "dependencies": {
     "electron-updater": "^6.8.9"
+  },
+  "overrides": {
+    "global-agent": "^4.1.3"
   }
 }

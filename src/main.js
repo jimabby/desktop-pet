@@ -11,6 +11,9 @@ const crypto = require('crypto');
 const { execFile } = require('child_process');
 const { startControlServer, ALLOWED_LINK_SCHEMES } = require('./server');
 const { createStore } = require('./store');
+const { createSessions, eventOf } = require('./sessions');
+const { installCompanion } = require('./companion');
+const { decodeSprite } = require('./sprite-image');
 const { parseClock, isQuietNow } = require('./quiet');
 const { mergePetHooks, petHooksInstalled } = require('./claude-hooks');
 
@@ -61,6 +64,11 @@ const MIN_SCALE = 0.6;
 const MAX_SCALE = 2.5;
 const SCALE_STEP = 0.1;
 
+function fitScale(scale, display = screen.getPrimaryDisplay()) {
+  const a = display.workArea || display.workAreaSize;
+  return Math.min(clampScale(scale), a.width / WIN_W, a.height / WIN_H);
+}
+
 function clampScale(s) {
   if (!Number.isFinite(s)) return 1;
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
@@ -85,7 +93,7 @@ function ensureToken() {
 // can be tested without Electron.
 // ---------------------------------------------------------------------------
 function inQuietHours(now = new Date()) {
-  return isQuietNow(store.get('quiet'), now);
+  return store.get('presentation') || store.get('quietFocus') || now.getTime() < store.get('snoozeUntil') || isQuietNow(store.get('quiet'), now);
 }
 
 // ---- Drag state (handled in main so coordinates stay in global screen space) ----
@@ -149,9 +157,9 @@ function flingPet(vx, vy) {
     x += fx;
     y += fy;
     if (x < area.x) { x = area.x; fx = -fx * BOUNCE; }
-    else if (x > area.x + area.width - w) { x = area.x + area.width - w; fx = -fx * BOUNCE; }
+    else if (x > area.x + Math.max(0, area.width - w)) { x = area.x + area.width - w; fx = -fx * BOUNCE; }
     if (y < area.y) { y = area.y; fy = -fy * BOUNCE; }
-    else if (y > area.y + area.height - h) { y = area.y + area.height - h; fy = -fy * BOUNCE; }
+    else if (y > area.y + Math.max(0, area.height - h)) { y = area.y + area.height - h; fy = -fy * BOUNCE; }
     fx *= FRICTION;
     fy *= FRICTION;
     win.setPosition(Math.round(x), Math.round(y));
@@ -186,7 +194,7 @@ function scheduleWander() {
   }, 14000 + Math.random() * 20000);
 }
 function maybeWander() {
-  if (store.get('wander') === false) return;
+  if (store.get('wander') === false || store.get('perch') || inQuietHours()) return;
   if (!win || win.isDestroyed() || !win.isVisible() || isDragging || moveAnim || focusState) return;
   // Only an idle, awake pet with nothing pending goes for a stroll.
   if (petState.mood !== 'idle' || petState.busy || petState.confirm || petState.reducedMotion) return;
@@ -215,16 +223,17 @@ ipcMain.on('pet-state', (_e, st) => {
 });
 
 function defaultPosition() {
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  return { x: Math.round(width * 0.65), y: Math.round(height * 0.4) };
+  const d = screen.getPrimaryDisplay();
+  const a = d.workArea || { x: 0, y: 0, ...d.workAreaSize };
+  return { x: a.x + Math.round(a.width * 0.65), y: a.y + Math.round(a.height * 0.4) };
 }
 
 // Keep the window on a visible display (handles unplugged monitors / changed resolutions).
 function clampToScreen(x, y, w = WIN_W, h = WIN_H) {
   const area = screen.getDisplayMatching({ x, y, width: w, height: h }).workArea;
   return {
-    x: Math.min(Math.max(x, area.x), area.x + area.width - w),
-    y: Math.min(Math.max(y, area.y), area.y + area.height - h)
+    x: Math.min(Math.max(x, area.x), area.x + Math.max(0, area.width - w)),
+    y: Math.min(Math.max(y, area.y), area.y + Math.max(0, area.height - h))
   };
 }
 
@@ -236,6 +245,8 @@ function rescueOffscreenWindow() {
   if (!win || win.isDestroyed()) return;
   const [x, y] = win.getPosition();
   const [w, h] = win.getSize();
+  const area = screen.getDisplayMatching({x,y,width:w,height:h}).workArea;
+  if(w>area.width || h>area.height) { cancelMoveAnim(); applyScale(store.get('scale')); return; }
   const next = clampToScreen(x, y, w, h);
   if (next.x === x && next.y === y) return;
   cancelMoveAnim(); // a fling/stroll aimed at the old geometry is now meaningless
@@ -250,7 +261,8 @@ function watchDisplays() {
 }
 
 function createWindow() {
-  const scale = clampScale(store.get('scale'));
+  const scale = fitScale(store.get('scale'));
+  store.set('scale', scale);
   const w = Math.round(WIN_W * scale);
   const h = Math.round(WIN_H * scale);
 
@@ -348,6 +360,7 @@ function spriteConfig() {
 // Send the full settings bundle (mute, context-window size, appearance) to the
 // pet renderer. Called on load and whenever any of them change.
 function pushSettings() {
+  writeConnection();
   pushSettingsWindow();
   if (!win || win.isDestroyed()) return;
   win.webContents.send('settings', {
@@ -542,6 +555,64 @@ function pushWeeklyStats() {
   win.webContents.send('weekly-stats', weeklyTotals());
 }
 
+function writeConnection() {
+  if (!store || !serverPort) return;
+  const file = path.join(app.getPath('userData'), 'pet-connection.json');
+  try {
+    fs.writeFileSync(file + '.tmp', JSON.stringify({pid:process.pid,port:serverPort,token:effectiveToken(),stressTokens:store.get('stressTokens')}), {mode:0o600});
+    fs.renameSync(file + '.tmp',file);
+  } catch (err) { console.error('[pet] connection discovery:',err.message); }
+}
+function effectiveToken() { return process.env.PET_TOKEN || store.get('token') || ''; }
+function shellQuote(value) {
+  if (process.platform === 'win32') return '"' + value.replace(/"/g, '""') + '"';
+  return "'" + value.replace(/'/g, "'\"'\"'") + "'";
+}
+const diagnostics = { lastEvent: null };
+function statsEntry(stats, source) {
+  if (!Object.hasOwn(stats.perAi, source)) Object.defineProperty(stats.perAi, source, {
+    value: { tasks: 0, confirms: 0, errors: 0, activeMs: 0 }, enumerable: true, writable: true, configurable: true
+  });
+  return stats.perAi[source];
+}
+const sessions = createSessions((source, start, end) => {
+  if (!store || !source) return;
+  while (start < end) {
+    const date = new Date(start), key = date.toLocaleDateString('en-CA');
+    const next = new Date(start); next.setHours(24, 0, 0, 0);
+    const until = Math.min(end, next.getTime()), ms = until - start;
+    if (key === todayStr()) {
+      const stats = getStats(); statsEntry(stats, source).activeMs += ms; store.set('stats', stats);
+      refreshWeekHistory();
+    } else {
+      const history = getWeekHistory();
+      let day = history.find(d => d.date === key);
+      if (!day) { day = {date:key,tasks:0,activeMs:0}; history.push(day); }
+      day.activeMs += ms; store.set('weekHistory', history);
+    }
+    start = until;
+  }
+});
+function acknowledgeConfirm(key, snoozeMs = 0) {
+  const c = openConfirms.get(key);
+  if (!c) return;
+  c.acked = !snoozeMs; c.snoozedUntil = snoozeMs ? Date.now() + snoozeMs : 0;
+  if (win && !win.isDestroyed()) win.webContents.send('confirm-ack', key);
+  pushActivity();
+}
+ipcMain.on('confirm:ack', (_e, key) => {
+  if (typeof key === 'string') acknowledgeConfirm(key);
+});
+function wakeSnoozedConfirms() {
+  for (const [key, c] of openConfirms) {
+    if (!c.snoozedUntil || c.snoozedUntil > Date.now()) continue;
+    c.snoozedUntil = 0;
+    if (win && !win.isDestroyed()) win.webContents.send('ai-state', {
+      ...c, key, mood:'thinking', event:'confirm', attention:true, ttl:60000
+    });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Event classification. Each incoming state is classified once, up front, so
 // the stats tally, the event log and the OS notification all agree on whether
@@ -552,7 +623,6 @@ function pushWeeklyStats() {
 // Notification, then reminders); while one is open, further confirms from the
 // same session are that prompt again, not new ones.
 const openConfirms = new Map(); // key -> { at, source, session, text, link }
-const CONFIRM_OPEN_MS = 10 * 60000; // an older one is treated as a new prompt
 
 function sourceKey(state) {
   return `${(state.source || '').toLowerCase().trim()}|${state.session || ''}`;
@@ -561,31 +631,29 @@ function sourceKey(state) {
 function classify(state) {
   const src = (state.source || '').toLowerCase().trim();
   const key = sourceKey(state);
-  const kind = state.attention
-    ? 'confirm'
-    : state.mood === 'error'
-      ? 'error'
-      : state.mood === 'happy'
-        ? 'done'
-        : '';
+  const event = eventOf(state);
+  const kind = event === 'confirm' ? 'confirm' : event === 'done' ? 'done' : event === 'error' ? 'error' : '';
   const text = state.text || DEFAULT_EVENT_TEXT[kind] || '';
   let repeat = false;
   if (kind === 'confirm') {
     const now = Date.now();
     const open = openConfirms.get(key);
-    repeat = !!open && now - open.at < CONFIRM_OPEN_MS;
+    repeat = !!open;
     openConfirms.set(key, {
       at: repeat ? open.at : now,
       source: src,
       session: state.session || '',
       text,
-      link: state.link || (repeat ? open.link : '')
+      link: state.link || (repeat ? open.link : ''),
+      acked: repeat ? !!open.acked : false,
+      snoozedUntil: repeat ? open.snoozedUntil || 0 : 0
     });
   } else {
     // Any other event from that session means its prompt was answered.
     if (!src && state.mood === 'idle') openConfirms.clear(); // blanket clear
-    else openConfirms.delete(key);
-    if (kind) repeat = isRepeatEvent(src, kind, text);
+    else if (state.mood === 'idle' && !state.session) {
+      for (const [k, c] of openConfirms) if (c.source === src) openConfirms.delete(k);
+    } else openConfirms.delete(key);
   }
   return { src, key, kind, text, repeat };
 }
@@ -595,31 +663,21 @@ function recordStat(state, info) {
   const { src, kind, text, repeat } = info;
   if (!src) return; // unattributed (e.g. a blanket idle clear) — nothing to log
   const s = getStats();
-  const a =
-    s.perAi[src] ||
-    (s.perAi[src] = { tasks: 0, confirms: 0, errors: 0, activeMs: 0, lastBusyAt: 0 });
-
-  const now = Date.now();
-  const busy = state.mood === 'thinking' || state.mood === 'working' || state.mood === 'stressed';
-  if (busy) {
-    // Accumulate active time from the stream of busy events. A gap under a
-    // minute counts as continuous work; longer gaps (idle/waiting) don't.
-    if (a.lastBusyAt && now - a.lastBusyAt < 60000) a.activeMs += now - a.lastBusyAt;
-    a.lastBusyAt = now;
-  }
+  const a = statsEntry(s, src);
   // Claude Code re-announces a pending prompt, so the same confirm can arrive
   // many times over (classify() marks those as repeats). Counting each one
   // would inflate the confirm tally and flood the event log.
   const counted =
-    !repeat && (state.attention || state.mood === 'error' || state.mood === 'happy');
-  if (state.attention && !repeat) a.confirms++;
-  if (state.mood === 'error' && !repeat) a.errors++;
-  if (state.mood === 'happy' && !repeat) {
+    !repeat && !!kind;
+  if (kind === 'confirm' && !repeat) a.confirms++;
+  if (kind === 'error' && !repeat) a.errors++;
+  if (kind === 'done' && !repeat) {
     a.tasks++; // a completed turn/task
     bumpLifetime();
   }
 
   store.set('stats', s);
+  if (kind && !repeat) logEvent(src, kind, text);
 
   // Push updated counts to the renderer only when a visible number changed.
   if (counted) {
@@ -630,8 +688,6 @@ function recordStat(state, info) {
   }
 
   // Feed the missed-event log for the states worth catching up on later.
-  if (kind && !repeat) logEvent(src, kind, text);
-
   scheduleTrayRefresh();
 }
 
@@ -648,22 +704,6 @@ const DEFAULT_EVENT_TEXT = {
   error: 'hit an error',
   done: 'finished a task'
 };
-
-// An identical (source, kind, text) inside this window is treated as the same
-// event re-announced rather than a new one. Long enough to swallow Claude
-// Code's repeating "still waiting" notifications, short enough that genuinely
-// repeated work (two identical tool errors a minute apart) still both register.
-const EVENT_REPEAT_MS = 90000;
-
-function isRepeatEvent(source, kind, text) {
-  // Look through the whole recent window, not just the newest entry, so two
-  // sources reporting alternately can't defeat the check.
-  const t = String(text).slice(0, 120);
-  const now = Date.now();
-  return (store.get('events') || []).some(
-    (e) => e.source === source && e.kind === kind && e.text === t && now - e.at < EVENT_REPEAT_MS
-  );
-}
 
 function logEvent(source, kind, text) {
   const events = (store.get('events') || []).slice(-(MAX_EVENTS - 1));
@@ -689,7 +729,7 @@ function recentSubmenu() {
     .slice(-RECENT_IN_TRAY)
     .reverse()
     .map((e) => {
-      const who = SOURCE_NAMES[e.source] || e.source || 'AI';
+      const who = (Object.hasOwn(SOURCE_NAMES,e.source) ? SOURCE_NAMES[e.source] : '') || e.source || 'AI';
       const icon = EVENT_ICON[e.kind] || '•';
       return { label: `${icon} ${who}: ${e.text}  (${timeAgo(e.at)})`, enabled: false };
     });
@@ -698,6 +738,7 @@ function recentSubmenu() {
     label: 'Clear log',
     click: () => {
       store.set('events', []);
+      pushActivity();
       buildTrayMenu();
     }
   });
@@ -737,10 +778,10 @@ function notifyWhenHidden(state, info) {
   if (inQuietHours()) return;
   if (!Notification.isSupported()) return;
 
-  const important = state.attention || state.mood === 'error';
+  const important = info.kind === 'confirm' || info.kind === 'error';
   if (!important) return;
 
-  const who = SOURCE_NAMES[info.src] || state.source || 'AI';
+  const who = (Object.hasOwn(SOURCE_NAMES,info.src) ? SOURCE_NAMES[info.src] : '') || state.source || 'AI';
   const text = info.text;
   // A re-announced prompt shouldn't stack up notifications while you're away.
   if (info.repeat) return;
@@ -776,7 +817,7 @@ function statsSubmenu() {
     return [{ label: 'No activity yet today', enabled: false }];
   }
   const items = Object.entries(s.perAi).map(([src, a]) => {
-    let label = `${SOURCE_NAMES[src] || src}: ${a.tasks} done · ${fmtDur(a.activeMs)} active`;
+    let label = `${(Object.hasOwn(SOURCE_NAMES,src) ? SOURCE_NAMES[src] : '') || src}: ${a.tasks} done · ${fmtDur(a.activeMs)} active`;
     if (a.confirms) label += ` · ${a.confirms} confirm${a.confirms > 1 ? 's' : ''}`;
     if (a.errors) label += ` · ${a.errors} err`;
     return { label, enabled: false };
@@ -785,7 +826,9 @@ function statsSubmenu() {
   items.push({
     label: 'Reset today',
     click: () => {
+      sessions.tick();
       store.set('stats', { date: todayStr(), perAi: {} });
+      refreshWeekHistory(); pushDailyStats(); pushWeeklyStats(); pushActivity();
       buildTrayMenu();
     }
   });
@@ -806,7 +849,7 @@ function scheduleTrayRefresh() {
 // Resize the pet by changing the window size + matching the page zoom, keeping
 // the pet (which sits at the bottom-center) visually anchored in place.
 function applyScale(scale) {
-  scale = clampScale(scale);
+  scale = fitScale(scale, win ? screen.getDisplayMatching(win.getBounds ? win.getBounds() : {x:win.getPosition()[0],y:win.getPosition()[1],width:win.getSize()[0],height:win.getSize()[1]}) : screen.getPrimaryDisplay());
   store.set('scale', scale);
   if (!win) return;
 
@@ -943,7 +986,7 @@ function openLinkSafely(url) {
     });
     return true;
   }
-  shell.openExternal(url);
+  shell.openExternal(url).catch(err => console.error('[pet] cannot open link:', err.message));
   return true;
 }
 
@@ -1008,7 +1051,7 @@ function showPet() {
 
 // Ask the pet to perform a trick (tray ▸ Tricks). The renderer animates it.
 function doTrick(name) {
-  if (win) win.webContents.send('pet-trick', name);
+  if (win && !inQuietHours()) win.webContents.send('pet-trick', name);
 }
 
 const TRICKS = [
@@ -1038,6 +1081,7 @@ function showPetMenu() {
     { type: 'separator' },
     { label: focusLabel(), click: toggleFocus },
     { label: 'Activity…', click: openStats },
+    { label: 'Companion center…', click: openStats },
     { label: 'Settings…', click: openSettings },
     { type: 'separator' },
     { label: 'Hide pet', click: togglePetVisible }
@@ -1069,6 +1113,7 @@ function focusDurations() {
 }
 
 function startFocusPhase(phase) {
+  if (focusState) { store.set('quietFocus', false); pushSettings(); }
   const minutes = focusDurations()[phase];
   focusState = { phase, endsAt: Date.now() + minutes * 60000 };
   if (win) win.webContents.send('focus', { phase, minutes });
@@ -1083,6 +1128,8 @@ function stopFocus() {
   clearTimeout(focusTimer);
   focusTimer = null;
   focusState = null;
+  store.set('quietFocus', false);
+  pushSettings();
   if (win) win.webContents.send('focus', { phase: null });
   buildTrayMenu();
 }
@@ -1150,7 +1197,7 @@ function registerHotkeys() {
 function answerLatestConfirm() {
   let latest = null;
   for (const [key, c] of openConfirms) {
-    if (!c.acked && (!latest || c.at > latest.c.at)) latest = { key, c };
+    if (!c.acked && !(c.snoozedUntil > Date.now()) && (!latest || c.at > latest.c.at)) latest = { key, c };
   }
   if (!latest) {
     showPet();
@@ -1159,8 +1206,7 @@ function answerLatestConfirm() {
   }
   // Stays in the map (marked) so a re-announcement still counts as the same
   // prompt rather than a new one.
-  latest.c.acked = true;
-  if (win && !win.isDestroyed()) win.webContents.send('confirm-ack', latest.key);
+  acknowledgeConfirm(latest.key);
   if (!(latest.c.link && openLinkSafely(latest.c.link))) showPet();
 }
 
@@ -1253,12 +1299,12 @@ function openStats() {
   }
   statsWin = new BrowserWindow({
     width: 460,
-    height: 560,
+    height: 760,
     resizable: true,
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
-    title: 'Pet Activity',
+    title: 'Companion center',
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'stats-preload.js'),
@@ -1295,7 +1341,7 @@ function activityReport() {
     totals: weeklyTotals(),
     perAi: Object.entries(today.perAi || {}).map(([src, a]) => ({
       source: src,
-      name: SOURCE_NAMES[src] || src,
+      name: (Object.hasOwn(SOURCE_NAMES,src) ? SOURCE_NAMES[src] : '') || src,
       tasks: a.tasks || 0,
       confirms: a.confirms || 0,
       errors: a.errors || 0,
@@ -1304,7 +1350,7 @@ function activityReport() {
     lifetimeTasks: store.get('lifetimeTasks') || 0,
     events: (store.get('events') || []).slice().reverse().map((e) => ({
       ...e,
-      name: SOURCE_NAMES[e.source] || e.source || 'AI',
+      name: (Object.hasOwn(SOURCE_NAMES,e.source) ? SOURCE_NAMES[e.source] : '') || e.source || 'AI',
       ago: timeAgo(e.at)
     }))
   };
@@ -1381,7 +1427,8 @@ function settingsPayload() {
     canAutoUpdate: canAutoUpdate(),
     quiet: { ...(store.get('quiet') || {}) },
     sprite: spriteMeta(),
-    token: store.get('token') || '',
+    token: effectiveToken(),
+    tokenLocked: !!process.env.PET_TOKEN,
     port: serverPort || Number(store.get('port')) || PET_PORT,
     serverError,
     focus: { work: f.work, break: f.break },
@@ -1460,7 +1507,7 @@ ipcMain.on('settings:set', (_e, cfg) => {
   if (hotkeysDirty) registerHotkeys();
   // An empty token would switch auth off and let any web page drive the pet,
   // so it is refused; use Regenerate to replace it instead.
-  if (typeof cfg.token === 'string' && cfg.token.trim()) {
+  if (!process.env.PET_TOKEN && typeof cfg.token === 'string' && cfg.token.trim()) {
     if (setIfChanged('token', cfg.token.trim().slice(0, 200))) store.flushNow(); // hooks read it from disk
   }
 
@@ -1558,8 +1605,16 @@ ipcMain.handle('settings:pickSprite', async () => {
     if (fs.statSync(file).size > MAX_SPRITE_BYTES) {
       return { ok: false, error: 'sprite sheet is larger than 4 MB' };
     }
-    removeSpriteFiles();
-    fs.copyFileSync(file, path.join(app.getPath('userData'), 'sprite' + ext));
+    const bytes = fs.readFileSync(file);
+    if (!await decodeSprite(bytes, mime, {nativeImage, BrowserWindow})) throw new Error('Image could not be decoded');
+    const target = path.join(app.getPath('userData'), 'sprite' + ext);
+    const tmp = target + '.import';
+    try { fs.writeFileSync(tmp, bytes); fs.renameSync(tmp, target); }
+    finally { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); }
+    for (const old of Object.keys(SPRITE_MIME)) {
+      if (old !== ext) { try { fs.unlinkSync(path.join(app.getPath('userData'), 'sprite' + old)); } catch {} }
+    }
+    spriteUrlCache = { key: '', url: '' };
   } catch (err) {
     return { ok: false, error: err.message };
   }
@@ -1595,9 +1650,11 @@ ipcMain.on('settings:clearSprite', () => {
 // A fresh token, for when the old one leaked or was pasted somewhere public.
 // Hooks pick it up from the config file; the userscript needs it pasted in.
 ipcMain.handle('settings:regenToken', () => {
+  if (process.env.PET_TOKEN) return effectiveToken();
   store.set('token', crypto.randomBytes(24).toString('hex'));
   store.flushNow();
-  return store.get('token');
+  writeConnection();
+  return effectiveToken();
 });
 
 // ---------------------------------------------------------------------------
@@ -1616,7 +1673,7 @@ function claudeSettingsPath() {
 }
 
 function hookCommand() {
-  return `node "${hookScriptPath()}"`;
+  return `node ${shellQuote(hookScriptPath())} --config ${shellQuote(store.path)}`;
 }
 
 function readClaudeSettings() {
@@ -1657,10 +1714,11 @@ ipcMain.handle('settings:installHooks', async () => {
   if (response !== 0) return { ok: false, cancelled: true };
 
   try {
+    const fresh = mergePetHooks(readClaudeSettings(), hookCommand()).settings;
     fs.mkdirSync(path.dirname(file), { recursive: true });
     if (fs.existsSync(file)) fs.copyFileSync(file, file + '.pet-backup');
     const tmp = file + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(settings, null, 2) + '\n');
+    fs.writeFileSync(tmp, JSON.stringify(fresh, null, 2) + '\n');
     fs.renameSync(tmp, file);
   } catch (err) {
     return { ok: false, error: err.message };
@@ -1679,7 +1737,8 @@ ipcMain.on('open-settings', () => openSettings());
 // read it back instead of trusting the stored flag. (Linux has no login-item
 // API in Electron, so there the stored flag is all we have.)
 function syncLaunchAtLogin() {
-  if (process.platform === 'linux' || typeof app.getLoginItemSettings !== 'function') return;
+  if (process.platform === 'linux') { store.set('launchAtLogin', false); return; }
+  if (typeof app.getLoginItemSettings !== 'function') return;
   try {
     store.set('launchAtLogin', !!app.getLoginItemSettings().openAtLogin);
   } catch (err) {
@@ -1706,7 +1765,9 @@ function toggleLaunchAtLogin() {
   store.set('launchAtLogin', open);
   try {
     app.setLoginItemSettings({ openAtLogin: open, openAsHidden: true });
+    syncLaunchAtLogin();
   } catch (err) {
+    store.set('launchAtLogin', !open);
     console.error('[pet] could not update login item:', err.message);
   }
   buildTrayMenu();
@@ -1734,6 +1795,7 @@ function buildTrayMenu() {
     { label: 'Today', submenu: statsSubmenu() },
     { label: 'Recent', submenu: recentSubmenu() },
     { label: 'Activity…', click: openStats },
+    { label: 'Companion center…', click: openStats },
     { label: 'Settings…', click: openSettings },
     {
       label: 'Behavior',
@@ -1775,7 +1837,9 @@ function buildTrayMenu() {
       label: 'Reset position',
       click: () => {
         if (!win) return;
-        const { x, y } = defaultPosition();
+        const pos = defaultPosition();
+        const [w,h] = win.getSize();
+        const { x, y } = clampToScreen(pos.x,pos.y,w,h);
         win.setPosition(x, y);
         savePosition();
       }
@@ -1811,7 +1875,8 @@ function buildTrayMenu() {
     { type: 'separator' },
     { label: 'Mute sounds', type: 'checkbox', checked: !!store.get('muted'), click: toggleMuted },
     {
-      label: 'Launch at login',
+      label: process.platform === 'linux' ? 'Launch at login (unsupported on Linux)' : 'Launch at login',
+      enabled: process.platform !== 'linux',
       type: 'checkbox',
       checked: !!store.get('launchAtLogin'),
       click: toggleLaunchAtLogin
@@ -1863,6 +1928,32 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     store = createStore(app);
+    // Focus timers are not resumed across process restarts.
+    store.set('quietFocus', false);
+    installCompanion({ app, ipcMain, dialog, nativeImage, BrowserWindow, screen, store, sessions, openConfirms,
+      getWindow: () => win, getStatsWindow: () => statsWin, activityReport, settingsPayload,
+      pushSettings, pushSprite, pushActivity, applyScale, savePosition, buildTrayMenu,
+      acknowledgeConfirm, openLinkSafely, inQuietHours, getDiagnostics: () => diagnostics,
+      effectiveToken, getPort: () => serverPort, stopFocus, isFocusing: () => !!focusState,
+      showPet, hidePet: () => { if (win && win.isVisible()) togglePetVisible(); },
+      notice, doTrick, clampToScreen, registerHotkeys,
+      canPlay: () => !isDragging && !moveAnim && !petState.busy && !petState.confirm && !petState.reducedMotion
+    });
+    let quietState = inQuietHours();
+    setInterval(() => {
+      sessions.tick(); wakeSnoozedConfirms();
+      const nextQuiet = inQuietHours();
+      if(nextQuiet !== quietState) {quietState = nextQuiet;pushSettings();}
+    }, 1000);
+    if (powerMonitor.on) {
+      powerMonitor.on('suspend', () => { sessions.suspend(); });
+      powerMonitor.on('resume', () => {
+        rescueOffscreenWindow(); pushSettings();
+        if(focusState && focusState.endsAt <= Date.now()) startFocusPhase(focusState.phase === 'work' ? 'break' : 'work');
+        if(win) win.webContents.send('ai-state',{mood:'idle'});
+        for(const [key,c] of openConfirms) if(!c.acked) win?.webContents.send('ai-state',{...c,key,mood:'thinking',event:'confirm',attention:true,ttl:60000,suppressed:c.snoozedUntil>Date.now()});
+      });
+    }
     // Auth on by default: without a token the open CORS policy would let any
     // web page you have loaded drive the pet. Must run before the server starts.
     ensureToken();
@@ -1914,22 +2005,32 @@ if (!app.requestSingleInstanceLock()) {
     startControlServer(
       PET_PORT,
       (state) => {
+        if (state.event === 'session-end' || state.event === 'idle') state.mood = 'idle';
+        if (eventOf(state) === 'confirm') state.attention = true;
+        diagnostics.lastEvent = { at: Date.now(), source: state.source, session: state.session, event: eventOf(state) };
+        const accepted = sessions.accept(state);
+        if (accepted.duplicate) return;
         const info = classify(state);
         notifyWhenHidden(state, info);
         recordStat(state, info);
         // The renderer tracks sessions by the same key, so hand it over rather
         // than have two places derive it.
-        const forwarded = { ...state, key: info.key };
+        const prompt = openConfirms.get(info.key);
+        const forwarded = { ...state, key: info.key, ttl: state.leaseMs || state.ttl,
+          suppressed: info.repeat && !!(prompt?.acked || prompt?.snoozedUntil > Date.now()) };
+        if (eventOf(state) === 'done') forwarded.mood = 'happy';
+        pushActivity();
         // This fires async from an HTTP request, which can land while the app
         // is quitting and the window is being torn down — guard accordingly.
         if (win && !win.isDestroyed()) win.webContents.send('ai-state', forwarded);
       },
       {
-        getToken: () => store.get('token') || process.env.PET_TOKEN || '',
+        getToken: effectiveToken,
         // Persist wherever we actually landed so the hook can find the pet even
         // if 7337 was taken and the server fell back to another port.
         onListen: (boundPort) => {
           serverPort = boundPort;
+          writeConnection();
           if (store.get('port') !== boundPort) {
             store.set('port', boundPort);
             store.flushNow();
@@ -1955,6 +2056,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('before-quit', () => {
+    if (store) sessions.tick();
     savePosition();
     if (store) store.flushNow();
   });

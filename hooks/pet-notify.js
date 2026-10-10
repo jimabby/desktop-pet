@@ -26,6 +26,11 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
+const cliArgs = process.argv.slice(2);
+let configPath = process.env.PET_CONFIG || '';
+const configIndex = cliArgs.indexOf('--config');
+if (configIndex >= 0) { configPath = cliArgs[configIndex + 1] || ''; cliArgs.splice(configIndex, 2); }
 
 const SOURCE = process.env.PET_SOURCE || 'claude';
 
@@ -38,14 +43,16 @@ function readPetConfig() {
   if (process.platform === 'darwin') base = path.join(home, 'Library', 'Application Support');
   else if (process.platform === 'win32') base = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
   else base = process.env.XDG_CONFIG_HOME || path.join(home, '.config');
-  // App name is "desktop-pet" in dev, "Desktop Pet" once packaged.
-  for (const dir of ['desktop-pet', 'Desktop Pet']) {
+  const files = configPath ? [configPath] : ['desktop-pet', 'Desktop Pet'].map(dir => path.join(base, dir, 'pet-config.json'));
+  const candidates = [];
+  for (const file of files) {
     try {
-      return JSON.parse(fs.readFileSync(path.join(base, dir, 'pet-config.json'), 'utf8'));
-    } catch {
-      /* try the next candidate */
-    }
+      const live = JSON.parse(fs.readFileSync(path.join(path.dirname(file), 'pet-connection.json'), 'utf8'));
+      if (Number.isInteger(live.pid) && live.pid > 0) { process.kill(live.pid, 0); return live; }
+    } catch { /* no live instance descriptor */ }
+    try { const value=JSON.parse(fs.readFileSync(file,'utf8')); if(value && typeof value==='object') candidates.push({value,mtime:fs.statSync(file).mtimeMs}); } catch {}
   }
+  if (candidates.length) return candidates.sort((a,b)=>b.mtime-a.mtime)[0].value;
   return {};
 }
 
@@ -235,10 +242,14 @@ function contextTokens(transcriptPath) {
 }
 
 // Set from the hook payload; '' for CLI use.
-let SESSION = '';
+let SESSION = process.env.PET_SESSION || `cli-${process.ppid}`;
+let EVENT = process.env.PET_EVENT || '';
+let EVENT_ID = '';
+let PROJECT = '';
+let LEASE = Number(process.env.PET_LEASE_MS) || 0;
 
 function send(state) {
-  const body = JSON.stringify({ source: SOURCE, ...(SESSION ? { session: SESSION } : {}), ...state });
+  const body = JSON.stringify({ source: SOURCE, session: SESSION, event: EVENT, eventId: EVENT_ID, project: PROJECT, leaseMs: LEASE, ...state });
   const headers = {
     'Content-Type': 'application/json',
     'Content-Length': Buffer.byteLength(body)
@@ -247,16 +258,16 @@ function send(state) {
 
   const req = http.request(
     { host: '127.0.0.1', port: PORT, path: '/state', method: 'POST', headers, timeout: 1500 },
-    (res) => res.resume()
+    (res) => { res.resume(); if (moodArg && res.statusCode !== 200) { console.error(`pet: server returned HTTP ${res.statusCode}; check token and port in Settings`); process.exitCode = 1; } }
   );
   // Never block or crash the AI host if the pet isn't running.
-  req.on('error', () => {});
+  req.on('error', (err) => { if (moodArg) { console.error('pet: ' + err.message); process.exitCode = 1; } });
   req.on('timeout', () => req.destroy());
   req.write(body);
   req.end();
 }
 
-const [, , moodArg, ...rest] = process.argv;
+const [moodArg, ...rest] = cliArgs;
 
 // Manual (CLI) states need a TTL of their own. Without one the pet would hold a
 // 'working' mood forever: nothing else is coming to clear it, since a script
@@ -300,8 +311,17 @@ if (moodArg) {
     } catch {
       /* ignore malformed hook payloads */
     }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
     const state = EVENT_MOOD[payload.hook_event_name];
     if (!state) return;
+    SESSION = '';
+    EVENT = ({SessionStart:'session-start',SessionEnd:'session-end',Stop:'done',UserPromptSubmit:'start',PermissionRequest:'confirm',Notification:'confirm'})[payload.hook_event_name] || 'busy';
+    PROJECT = typeof payload.cwd === 'string' ? path.basename(payload.cwd) : '';
+    // Tool execution may legitimately run for many minutes without another hook.
+    LEASE = ['PreToolUse','SubagentStop'].includes(payload.hook_event_name) ? 1800000 : 0;
+    if (payload.hook_event_name === 'Stop' && payload.transcript_path) {
+      try { EVENT_ID = crypto.createHash('sha256').update(payload.hook_event_name + ':' + readTail(payload.transcript_path)).digest('hex'); } catch {}
+    }
     if (typeof payload.session_id === 'string') SESSION = payload.session_id.slice(0, 80);
 
     // Notification covers several situations. Only the ones that block on the
@@ -352,7 +372,7 @@ if (moodArg) {
 
     // Heavy context -> show the strained look instead of the normal mood, but
     // keep the event's TTL so it still self-heals after an interrupt.
-    const overridable = state.mood === 'working' || state.mood === 'thinking' || state.mood === 'happy';
+    const overridable = state.mood === 'working' || state.mood === 'thinking';
     if (STRESS_TOKENS > 0 && overridable && ctx >= STRESS_TOKENS) {
       return send({ mood: 'stressed', text: `phew… ${Math.round(ctx / 1000)}k ctx`, ttl: state.ttl, ctx });
     }

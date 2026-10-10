@@ -26,3 +26,6 @@ jobs:
       # skeleton and clips (the WebGL screenshot test needs a GPU, so skip it).
       - run: npm run build:3d
       - run: node scripts/check-models.js --assets-only
+      # Real isolated app/IPC/UI integration on the macOS runner.
+      - if: runner.os == 'macOS'
+        run: npm run test:ui

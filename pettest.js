@@ -193,11 +193,18 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   await wait(200);
   eq('PreToolUse -> working', last().mood, 'working');
   check('PreToolUse has a safety-net TTL', last().ttl > 0, `ttl=${last().ttl}`);
+  check('long tools receive an explicit lease', last().leaseMs >= 1800000);
 
   received.length = 0;
   await notify([], '{"hook_event_name":"Stop"}');
   await wait(200);
   eq('Stop -> happy', last().mood, 'happy');
+  eq('Stop carries completion semantics', last().event, 'done');
+
+  received.length = 0;
+  await notify([], '{"hook_event_name":"SessionStart"}');
+  await wait(200);
+  eq('SessionStart has greeting semantics', last().event, 'session-start');
 
   received.length = 0;
   await notify([], '{"hook_event_name":"PermissionRequest","tool_name":"Bash"}');
@@ -242,6 +249,19 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   await notify([], 'not json at all');
   await wait(200);
   eq('malformed hook payload sends nothing', received.length, 0);
+
+  // Wrappers serialize start/completion notifications even for instant commands.
+  received.length = 0;
+  const wrapped = () => new Promise(resolve => {
+    const child = spawn(process.execPath,['hooks/pet-wrap.js',process.execPath,'-e','process.exit(7)'],{env:{...process.env,PET_PORT:String(PORT)},stdio:'ignore'});
+    child.on('close',resolve);
+  });
+  eq('wrapper preserves command failure exit code', await wrapped(), 7);
+  check('wrapper reports working before error',received.length===2 && received[0].mood==='working' && received[1].mood==='error');
+  const firstSession=received[0].session;
+  check('wrapper keeps a stable session through completion',firstSession && firstSession===received[1].session);
+  await wrapped();
+  check('another wrapped command uses a fresh session',received[2].session!==firstSession);
 
   srv.close();
 

@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('petAPI', {
   // when idle.
   reportState: (st) => ipcRenderer.send('pet-state', st),
 
+  acknowledge: (key) => ipcRenderer.send('confirm:ack', key),
+  affection: () => ipcRenderer.send('pet:affection'),
+
   // Events from main
   onClick: (cb) => ipcRenderer.on('pet-click', () => cb()),
   onGrab: (cb) => ipcRenderer.on('pet-grabbed', () => cb()),

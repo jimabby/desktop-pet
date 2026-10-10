@@ -293,6 +293,75 @@ require(path.resolve('src/main.js'));
   ok('settings push carries quiet', settingsMsg && typeof settingsMsg[1].quiet === 'boolean');
   ok('settings push carries ctxMax', settingsMsg && settingsMsg[1].ctxMax === 500000, JSON.stringify(settingsMsg && settingsMsg[1].ctxMax));
 
+  // A failed sprite replacement must preserve the previous image and config.
+  const spritePath=path.join(userData,'sprite.png');
+  const incoming=path.join(userData,'replacement.png');
+  fs.writeFileSync(spritePath,Buffer.from(PNG_1PX,'base64'));
+  fs.writeFileSync(incoming,Buffer.from(PNG_1PX,'base64'));
+  electron.nativeImage.createFromBuffer=bytes=>({isEmpty:()=>bytes.length===0});
+  electron.dialog.showOpenDialog=async()=>({canceled:false,filePaths:[incoming]});
+  const rename=fs.renameSync;
+  fs.renameSync=(from,to)=>{if(from===spritePath+'.import')throw new Error('Simulated write failure');return rename(from,to);};
+  const failedSprite=await ipcHandlers.get('settings:pickSprite')();
+  fs.renameSync=rename;
+  ok('failed replacement preserves the managed sprite',!failedSprite.ok && fs.readFileSync(spritePath).equals(Buffer.from(PNG_1PX,'base64')));
+  electron.dialog.showOpenDialog=async()=>({canceled:false,filePaths:[spritePath]});
+  ok('selecting the existing managed sprite succeeds',(await ipcHandlers.get('settings:pickSprite')()).ok);
+  ipcListeners.get('settings:clearSprite')(null);
+
+  // Audit regressions and companion actions through real main-process handlers.
+  const action = a => ipcHandlers.get('companion:action')(null, a);
+  const companion = () => ipcHandlers.get('companion:get')();
+  const tasks = async src => (await ipcHandlers.get('stats:get')()).perAi.find(a => a.source === src)?.tasks || 0;
+  await post({source:'audit',session:'A',event:'session-start',mood:'happy',text:'hello!'});
+  ok('session greeting does not count as completed work', await tasks('audit') === 0);
+  await post({source:'audit',session:'A',event:'done',mood:'happy',text:'done!',eventId:'1'});
+  await post({source:'audit',session:'B',event:'done',mood:'happy',text:'done!',eventId:'1'});
+  await post({source:'audit',session:'A',event:'done',mood:'stressed',text:'done!',eventId:'2'});
+  await post({source:'audit',session:'A',event:'done',mood:'happy',text:'done!',eventId:'2'});
+  ok('three independent completions count once each, including stressed done',await tasks('audit')===3);
+  await post({source:'__proto__',session:'A',event:'done',mood:'happy'});
+  ok('special source names use own statistics entries',await tasks('__proto__')===1 && Object.prototype.tasks===undefined);
+  await post({source:'audit',session:'P',attention:true,mood:'thinking',text:'permission'});
+  await action({type:'ack',key:'audit|P'});
+  await post({source:'audit',session:'P',attention:true,mood:'thinking',text:'permission again'});
+  ok('repeated prompt preserves acknowledgement',(await companion()).prompts.find(p=>p.key==='audit|P').acked);
+  await action({type:'snoozePrompt',key:'audit|P'});
+  ok('prompt can be snoozed independently',(await companion()).prompts.find(p=>p.key==='audit|P').snoozedUntil>Date.now());
+  await post({source:'audit',mood:'idle'});
+  ok('source-wide idle clears all main prompts',!(await companion()).prompts.some(p=>p.source==='audit'));
+  await action({type:'snooze',minutes:15});
+  ok('timed quiet mutes the pet',(await companion()).diagnostics.quiet);
+  await action({type:'endQuiet'});
+  await action({type:'presentation',enabled:true});
+  ok('presentation mode hides the pet',!visible && (await companion()).presentation);
+  await action({type:'presentation',enabled:false});
+  ok('presentation mode restores previous visibility',visible);
+  const affectionBefore=(await companion()).affection;
+  await action({type:'treat'});
+  ok('treat earns persistent affection',(await companion()).affection>affectionBefore);
+  set(null,{wander:true,muted:false});
+  await action({type:'saveProfile',name:'Play'});
+  await action({type:'loadProfile',name:'Minimal'});
+  ok('minimal preset disables wandering',(await ipcHandlers.get('settings:get')()).wander===false);
+  await action({type:'loadProfile',name:'Play'});
+  ok('saved profile restores preferences',(await ipcHandlers.get('settings:get')()).wander===true);
+  const diagnostic=await action({type:'test'});
+  ok('connection test verifies real local authentication',diagnostic.ok && diagnostic.message.includes('passed'));
+  const exportPath=path.join(userData,'backup.json');
+  electron.dialog.showSaveDialog=async()=>({filePath:exportPath,canceled:false});
+  ok('settings backup exports successfully',(await action({type:'backup'})).ok);
+  const backup=JSON.parse(fs.readFileSync(exportPath,'utf8'));
+  ok('backup is versioned and excludes credentials',backup.version===1 && !('token' in backup.settings));
+  electron.dialog.showOpenDialog=async()=>({canceled:false,filePaths:[exportPath]});
+  electron.dialog.showMessageBox=async()=>({response:0});
+  set(null,{name:'Changed'});
+  ok('restore applies saved preferences',(await action({type:'restore'})).ok && (await ipcHandlers.get('settings:get')()).name===backup.settings.name);
+  ok('restore keeps authentication',(await ipcHandlers.get('settings:get')()).token===fresh);
+  ok('diagnostic export succeeds',(await action({type:'diagnostics'})).ok);
+  ok('diagnostic export excludes token, session and project details',!fs.readFileSync(exportPath,'utf8').includes(fresh) && !fs.readFileSync(exportPath,'utf8').includes('audit|'));
+  ok('CSV exports successfully',(await action({type:'csv'})).ok && fs.readFileSync(exportPath,'utf8').includes('Active milliseconds'));
+
   try {
     fs.rmSync(userData, { recursive: true, force: true });
   } catch {

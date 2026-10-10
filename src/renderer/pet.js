@@ -214,7 +214,17 @@ window.petAPI.onSprite((sprite) => applySprite(sprite));
 //   sprite = { url, cols, rows, fps?, moods: { idle:{row,frames,fps?}, ... } }
 // ---------------------------------------------------------------------------
 let spriteCfg = null;
-function applySprite(sprite) {
+let spriteGeneration = 0;
+function applySprite(sprite, verified = false) {
+  if (!verified) {
+    const generation = ++spriteGeneration;
+    if (sprite?.url && typeof Image !== 'undefined') {
+      const image = new Image();
+      image.onload = () => { if (generation === spriteGeneration) applySprite(sprite, true); };
+      image.onerror = () => { if (generation === spriteGeneration) { applySprite(null, true); say('Sprite unavailable — showing drawn pet', 5000); } };
+      image.src = sprite.url; return;
+    }
+  }
   const rootStyle = document.documentElement.style;
   if (!sprite || typeof sprite !== 'object' || typeof sprite.url !== 'string' || !sprite.url) {
     spriteCfg = null;
@@ -525,7 +535,7 @@ function stopConfirmNudge({ restore = true } = {}) {
   pet.classList.remove('attention', 'attention-strong');
   if (wasActive && restore) {
     if (activeAis.size) renderFromActiveAis();
-    else setMood('idle');
+    else setMood(focusPhase === 'break' ? 'sleeping' : 'idle');
   }
   reportState();
 }
@@ -534,6 +544,7 @@ function stopConfirmNudge({ restore = true } = {}) {
 // bubble's link element — never from a poke or any other incidental gesture.
 function openPendingLink() {
   if (!pendingLink) return false;
+  window.petAPI.acknowledge(confirmInfo.key);
   window.petAPI.openLink(pendingLink);
   pendingLink = '';
   bubbleLink.classList.add('hidden');
@@ -645,7 +656,8 @@ function renderFromActiveAis() {
   if (activeAis.size === 0) {
     lastActiveClear = Date.now(); // sleep timer starts from here, not last hook event
     setSource('');
-    setMood('idle');
+    setMood(focusPhase === 'break' ? 'sleeping' : 'idle');
+    flushNotice();
     return;
   }
 
@@ -658,6 +670,7 @@ function renderFromActiveAis() {
 // Incoming AI state (from the local control server, via main process)
 // ---------------------------------------------------------------------------
 window.petAPI.onAiState((state) => {
+  if (state.suppressed) return;
   cancelReaction();
   stopWalking();
   lastInteraction = Date.now();
@@ -665,7 +678,7 @@ window.petAPI.onAiState((state) => {
   const key = state.key || `${source}|${state.session || ''}`;
   const prefix = state.source ? `${sourceName(source)}: ` : '';
   const goingIdle = state.mood === 'idle';
-  const isConfirm = !!(state.attention || state.link);
+  const isConfirm = state.event ? state.event === 'confirm' : !!(state.attention || state.link);
   // Set when a session finishes a timed task, e.g. " · 2m 13s"; appended to the
   // "done!" bubble so you can see how long the AI took.
   let finishedSuffix = '';
@@ -674,13 +687,17 @@ window.petAPI.onAiState((state) => {
   // superseded). Other sessions' prompts keep waiting. An idle with no session
   // clears the whole source; one with no source clears everything.
   const confirmShownBefore = confirmInfo.key;
+  const hadPendingConfirm = confirmPending;
   if (!isConfirm) {
     if (goingIdle && !state.source) pendingConfirms.clear();
     else if (goingIdle && !state.session) {
       [...pendingConfirms.keys()].filter((k) => k.startsWith(source + '|')).forEach((k) => pendingConfirms.delete(k));
     } else pendingConfirms.delete(key);
     if (pendingConfirms.size) showLatestConfirm();
-    else stopConfirmNudge({ restore: false });
+    else {
+      stopConfirmNudge({ restore: false });
+      if (hadPendingConfirm) say('');
+    }
   }
 
   if (goingIdle) {
@@ -734,6 +751,7 @@ window.petAPI.onAiState((state) => {
   if (isConfirm) {
     // A confirm/permission prompt. The link (jump back to the editor or
     // terminal) is optional — the bounce + chime fire either way.
+    const alreadyPending = pendingConfirms.has(key);
     pendingConfirms.delete(key);
     pendingConfirms.set(key, {
       text: prefix + (state.text || 'needs you to confirm'),
@@ -742,8 +760,10 @@ window.petAPI.onAiState((state) => {
     });
     showLatestConfirm();
     sayConfirm(state.ttl || 60000);
-    attention();
-    startConfirmNudge(); // keep nudging until it's answered
+    if (!alreadyPending) {
+      attention();
+      startConfirmNudge(); // keep nudging until it's answered
+    }
   } else if (confirmPending) {
     // Another session is still waiting on you: keep its prompt on screen
     // rather than covering it with this session's chatter.
@@ -761,8 +781,15 @@ window.petAPI.onAiState((state) => {
 // A transient celebratory bubble from main (e.g. "unlocked the crown!"), shown
 // without disturbing whatever mood the pet is currently in.
 // ---------------------------------------------------------------------------
+let deferredNotice = '';
+function flushNotice() {
+  if (!deferredNotice || confirmPending || activeAis.size || focusPhase) return;
+  const text = deferredNotice; deferredNotice = '';
+  say(text, 4000);
+}
 window.petAPI.onNotice((text) => {
   if (!text) return;
+  if (confirmPending || activeAis.size || focusPhase) { deferredNotice = String(text); return; }
   lastInteraction = Date.now();
   burst('sparkle', 5);
   say(String(text), 4000);
@@ -795,6 +822,12 @@ window.petAPI.onFocus((f) => {
   cancelReaction();
   focusPhase = f && f.phase ? f.phase : null;
   lastInteraction = Date.now();
+  if (confirmPending || activeAis.size) {
+    pet.classList.toggle('focusing', focusPhase === 'work');
+    showFocusPhones(focusPhase === 'work');
+    if (focusPhase === 'work') startFocusNotes(); else stopFocusNotes();
+    return;
+  }
   if (focusPhase === 'work') {
     pet.classList.add('focusing');
     showFocusPhones(true);
@@ -855,11 +888,15 @@ function react() {
   const hadConfirm = confirmPending || !!pendingLink;
   if (hadConfirm) {
     const link = pendingLink;
+    window.petAPI.acknowledge(confirmInfo.key);
+    answeredConfirm(confirmInfo.key);
+    if (pendingConfirms.size) return;
     stopConfirmNudge({ restore: true });
     if (link) say(confirmInfo.text || 'still waiting on you', 15000, link, confirmInfo.linkText);
     return;
   }
 
+  window.petAPI.affection();
   pokeStreak++;
   clearTimeout(pokeStreakTimer);
   pokeStreakTimer = setTimeout(() => (pokeStreak = 0), 1400);
@@ -952,6 +989,7 @@ window.addEventListener('keydown', (e) => {
 // ---------------------------------------------------------------------------
 const CARRY_LINES = ['wheee~', 'whooaa!', 'flying! 🛸', 'where to?', '*giggles*'];
 window.petAPI.onGrab(() => {
+  if (confirmPending) { pet.classList.add('grabbed'); return; }
   cancelReaction();
   lastInteraction = Date.now();
   clearTimeout(happyResetTimer);
@@ -964,6 +1002,7 @@ window.petAPI.onGrab(() => {
 window.petAPI.onDrop(() => {
   lastInteraction = Date.now();
   pet.classList.remove('grabbed');
+  if (confirmPending) { sayConfirm(); return; }
   // Land with a little squish + sparkle, then settle back.
   pet.classList.add('act-stretch');
   burst('sparkle', 2);
@@ -1176,7 +1215,7 @@ window.addEventListener('mousemove', (e) => {
 function blink() {
   // A sleeping pet keeps its eyes shut — but the loop must still reschedule,
   // otherwise blinking stops for good the first time the pet nods off.
-  if (currentMood !== 'sleeping') {
+  if (currentMood !== 'sleeping' && !reducedMotion.matches) {
     pet.classList.add('blink');
     setTimeout(() => pet.classList.remove('blink'), 140);
   }

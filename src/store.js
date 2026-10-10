@@ -10,6 +10,15 @@ function createStore(app) {
   const file = path.join(app.getPath('userData'), 'pet-config.json');
 
   const defaults = {
+    affection: 0,
+    snoozeUntil: 0,
+    quietFocus: false,
+    presentation: false,
+    presentationWasHidden: false,
+    perch: false,
+    profiles: {},
+    preferredDisplay: '',
+    preferredCorner: 'bottom-right',
     x: null,
     y: null,
     scale: 1,
@@ -61,6 +70,7 @@ function createStore(app) {
   let data = { ...defaults };
   try {
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!saved || typeof saved !== 'object' || Array.isArray(saved)) throw new Error('Invalid configuration');
     data = { ...defaults, ...saved };
     for (const key of NESTED_KEYS) {
       if (saved[key] && typeof saved[key] === 'object' && !Array.isArray(saved[key])) {
@@ -70,7 +80,13 @@ function createStore(app) {
       }
     }
   } catch {
-    /* first run or unreadable — use defaults */
+    try { if (fs.existsSync(file)) fs.copyFileSync(file, file + '.recovery-' + Date.now()); } catch {}
+  }
+
+  const beforeValidation = JSON.stringify(data);
+  data = validateConfig(data, defaults);
+  if (JSON.stringify(data) !== beforeValidation && fs.existsSync(file)) {
+    try { fs.copyFileSync(file, file + '.recovery-' + Date.now()); } catch {}
   }
 
   // Retired characters fall back to the default on existing installations.
@@ -82,9 +98,11 @@ function createStore(app) {
     // power loss mid-write can never leave a half-written (unparseable) config
     // — the rename is atomic, and the reader above falls back to defaults only
     // if the *complete* previous file is somehow unreadable.
+    clearTimeout(writeTimer);
     const tmp = file + '.tmp';
     try {
-      fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(tmp, JSON.stringify(data, null, 2), { mode: 0o600 });
       fs.renameSync(tmp, file);
     } catch (err) {
       console.error('[pet] could not save config:', err.message);
@@ -109,4 +127,28 @@ function createStore(app) {
   };
 }
 
-module.exports = { createStore };
+function validateConfig(saved, defaults) {
+  const data = { ...defaults, ...saved };
+  for (const [key, value] of Object.entries(defaults)) {
+    if (typeof value === 'boolean' && typeof data[key] !== 'boolean') data[key] = value;
+    if (typeof value === 'string' && typeof data[key] !== 'string') data[key] = value;
+    if (typeof value === 'number' && (!Number.isFinite(data[key]) || data[key] < 0)) data[key] = value;
+  }
+  for (const key of ['x', 'y']) if (!Number.isFinite(data[key])) data[key] = null;
+  if (data.x === null || data.y === null) data.x = data.y = null;
+  const obj = v => v && typeof v === 'object' && !Array.isArray(v);
+  const num = v => Number.isFinite(v) && v >= 0 ? v : 0;
+  if (!obj(data.stats) || typeof data.stats.date !== 'string' || !obj(data.stats.perAi)) data.stats = null;
+  else data.stats = { date: data.stats.date, perAi: Object.fromEntries(Object.entries(data.stats.perAi).filter(([,v]) => obj(v)).map(([k,v]) => [k, { tasks: num(v.tasks), confirms: num(v.confirms), errors: num(v.errors), activeMs: num(v.activeMs) }])) };
+  data.events = Array.isArray(data.events) ? data.events.filter(e => obj(e) && Number.isFinite(e.at) && typeof e.source === 'string' && typeof e.text === 'string' && ['done','error','confirm'].includes(e.kind)).slice(-50) : [];
+  data.weekHistory = Array.isArray(data.weekHistory) ? data.weekHistory.filter(d => obj(d) && /^\d{4}-\d{2}-\d{2}$/.test(d.date)).map(d => ({date:d.date,tasks:num(d.tasks),activeMs:num(d.activeMs)})).slice(-7) : [];
+  if (!obj(data.profiles)) data.profiles = {};
+  for (const key of ['focus','quiet']) if (!obj(data[key])) data[key] = {...defaults[key]};
+  data.focus = {work: Math.max(1, Math.min(180, Number(data.focus.work) || 25)), break: Math.max(1, Math.min(60, Number(data.focus.break) || 5))};
+  const {parseClock} = require('./quiet');
+  data.quiet = {enabled: data.quiet.enabled === true, from: parseClock(data.quiet.from) !== null ? String(data.quiet.from) : defaults.quiet.from, to: parseClock(data.quiet.to) !== null ? String(data.quiet.to) : defaults.quiet.to};
+  if (!obj(data.sprite)) data.sprite = null;
+  if (typeof data.lastGreetDate !== 'string') delete data.lastGreetDate;
+  return data;
+}
+module.exports = { createStore, validateConfig };
