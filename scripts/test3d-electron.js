@@ -108,6 +108,24 @@ app.whenReady().then(async () => {
     assert(calm.toPNG().equals((await win.webContents.capturePage()).toPNG()), 'reduced motion sleeping pose stays still');
     win.webContents.debugger.detach();
     console.log('PASS reduced-motion static pose');
+    // Count actual WebGL draw submissions, rather than asserting the FPS constant.
+    win.webContents.debugger.attach('1.3');
+    await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
+    await read(`window.auditDraws=0; for(const method of ['drawElements','drawElementsInstanced','drawArrays','drawArraysInstanced']) { const original=WebGL2RenderingContext.prototype[method]; WebGL2RenderingContext.prototype[method]=function(...args){window.auditDraws++;return original.apply(this,args);}; } void 0;`);
+    win.webContents.send('ai-state',{mood:'idle'});
+    win.webContents.send('settings',{lowPower:false});
+    await pause(100); await read('window.auditDraws=0'); await pause(1000);
+    const normalDraws=await read('window.auditDraws');
+    win.webContents.send('settings',{lowPower:true});
+    await pause(100); await read('window.auditDraws=0'); await pause(1000);
+    const lowDraws=await read('window.auditDraws');
+    assert(normalDraws>0 && lowDraws>0 && lowDraws < normalDraws * .65, `low power should reduce idle submissions: ${normalDraws} -> ${lowDraws}`);
+    win.webContents.send('ai-state',{mood:'sleeping',source:'test'});
+    await pause(500); await read('window.auditDraws=0'); await pause(500);
+    assert.equal(await read('window.auditDraws'),0,'low power sleeping stops WebGL submissions');
+    console.log(`PASS low-power draw submissions: normal ${normalDraws}, low ${lowDraws}, sleeping 0`);
+    win.webContents.debugger.detach();
+    win.webContents.send('settings',{lowPower:false});
     // Out-of-order model loads must not overwrite the last chosen skin.
     for (const skin of ['kitten', 'slime', 'puppy']) {
       win.webContents.send('settings', { appearance: { skin } });
@@ -124,6 +142,7 @@ app.whenReady().then(async () => {
     console.log('Screenshots:', scratch);
     win.destroy();
     let chosen = '';
+    ipcMain.handle('settings:spritePreview', () => null);
     ipcMain.handle('settings:get', () => ({ name: 'Mochi', skin: 'kitten', color: 'green',
       palette: { green: ['#7ee8a0', '#45c97a'], pink: ['#ffc2d6', '#ff7eb6'], natural: ['#e9bd86', '#ac754b'] }, skins: ['slime', 'kitten', 'puppy'],
       cosmeticUnlocks: { none: 0, bowtie: 0, flower: 0, crown: 120 }, unlocked: ['none', 'bowtie', 'flower'] }));

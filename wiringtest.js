@@ -68,6 +68,7 @@ const electron = {
   },
   BrowserWindow: function () { return fakeWin; },
   powerMonitor: { getSystemIdleTime: () => 0 },
+  clipboard: { writeText(text) { this.lastText = text; } },
   ipcMain: {
     on: (ch, cb) => ipcListeners.set(ch, cb),
     handle: (ch, cb) => ipcHandlers.set(ch, cb)
@@ -362,6 +363,39 @@ require(path.resolve('src/main.js'));
   ok('diagnostic export excludes token, session and project details',!fs.readFileSync(exportPath,'utf8').includes(fresh) && !fs.readFileSync(exportPath,'utf8').includes('audit|'));
   ok('CSV exports successfully',(await action({type:'csv'})).ok && fs.readFileSync(exportPath,'utf8').includes('Active milliseconds'));
 
+
+  await post({source:'lease-check',mood:'working'});
+  const forwarded = sent.filter(([ch,v])=>ch==='ai-state' && v.source==='lease-check').pop()[1];
+  ok('default busy lease reaches renderer', forwarded.ttl === 120000);
+  const sample = await action({type:'sampleEvent'});
+  ok('sample event reaches authenticated state ingestion', sample.ok && sample.message.includes('received'));
+  const command = await action({type:'setupCommand'});
+  ok('setup command contains actual port and token', command.command.includes('7391') && command.command.includes(fresh));
+  await action({type:'copySetupCommand'});
+  ok('setup command copies through the clipboard bridge', electron.clipboard.lastText === command.command);
+  await post({source:'dismiss-check',session:'A',event:'confirm',mood:'thinking',text:'Stale'});
+  await action({type:'dismiss',key:'dismiss-check|A'});
+  const dismissed = await ipcHandlers.get('companion:get')();
+  ok('dismiss removes prompt and closes local session', !dismissed.prompts.some(p=>p.key==='dismiss-check|A') && dismissed.sessions.find(s=>s.key==='dismiss-check|A').status==='dismissed');
+  set(null,{lowPower:true,lowPowerOnBattery:true});
+  ok('low power persists and is forwarded', (await ipcHandlers.get('settings:get')()).lowPower && sent.filter(([ch])=>ch==='settings').pop()[1].lowPower);
+  const focusItem = trayTemplate.find(i=>i.label && i.label.toLowerCase().includes('focus'));
+  focusItem.click();
+  await post({source:'recap-check',session:'one',event:'start',mood:'working'});
+  await new Promise(r=>setTimeout(r,30));
+  await post({source:'recap-check',session:'one',event:'done',mood:'happy'});
+  focusItem.click();
+  const recap = (await ipcHandlers.get('companion:get')()).focusRecaps.at(-1);
+  ok('stopped focus records task and measured active duration', recap && recap.tasks===1 && recap.activeMs>0 && !recap.completed);
+
+  let bounds = {x:0,y:0,width:600,height:800};
+  fakeWin.getSize = () => [bounds.width,bounds.height];
+  fakeWin.getPosition = () => [bounds.x,bounds.y];
+  fakeWin.setBounds = b => {bounds = b;};
+  fakeWin.setPosition = (x,y) => {bounds.x=x;bounds.y=y;};
+  electron.screen.getAllDisplays = () => [{id:2,workArea:{x:1920,y:0,width:800,height:600}}];
+  await action({type:'position',display:'2',corner:'bottom-right',perch:true});
+  ok('destination display constrains scale before placement', bounds.height<=600 && bounds.y>=0 && bounds.y+bounds.height<=600 && bounds.x>=1920);
   try {
     fs.rmSync(userData, { recursive: true, force: true });
   } catch {

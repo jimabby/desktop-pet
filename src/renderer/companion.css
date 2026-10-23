@@ -44,3 +44,5 @@
   border-top: 1px solid #ddd;
   overflow-wrap: anywhere;
 }
+
+#companion textarea { width: 100%; box-sizing: border-box; font: 12px monospace; }

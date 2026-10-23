@@ -3,10 +3,14 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const { decodeSprite } = require('./sprite-image');
+const { removeManagedSprite } = require('./sprite-config');
+const crypto = require('crypto');
 
 const PROFILE_KEYS = [
   'scale',
   'muted',
+  'lowPower',
+  'lowPowerOnBattery',
   'wander',
   'physics',
   'timeOfDay',
@@ -79,6 +83,8 @@ function safeSettings(input) {
     } else if (
       [
         'muted',
+        'lowPower',
+        'lowPowerOnBattery',
         'wander',
         'physics',
         'timeOfDay',
@@ -176,6 +182,7 @@ function installCompanion(c) {
     const display =
       displays.find((d) => String(d.id) === store.get('preferredDisplay')) ||
       screen.getPrimaryDisplay();
+    c.applyScale(store.get('scale'), display);
     const a = display.workArea || { x: 0, y: 0, ...display.workAreaSize },
       [w, h] = win.getSize();
     const corner = store.get('preferredCorner') || 'bottom-right';
@@ -188,6 +195,7 @@ function installCompanion(c) {
   function payload() {
     const points = store.get('affection') || 0;
     return {
+      focusRecaps: store.get('focusRecaps') || [],
       sessions: c.sessions
         .list()
         .map((s) => ({ ...s, prompt: c.openConfirms.get(s.key) || null })),
@@ -242,7 +250,9 @@ function installCompanion(c) {
   function apply(settings) {
     for (const [k, v] of Object.entries(safeSettings(settings)))
       store.set(k, v);
-    c.applyScale(store.get('scale'));
+    const displays = screen.getAllDisplays ? screen.getAllDisplays() : [screen.getPrimaryDisplay()];
+    const destination = displays.find(d => String(d.id) === store.get('preferredDisplay'));
+    c.applyScale(store.get('scale'), destination);
     c.registerHotkeys();
     refresh();
   }
@@ -282,6 +292,29 @@ function installCompanion(c) {
           : 'Connection failed: check the tray server status.'
       };
     }
+    if (a.type === 'setupCommand' || a.type === 'copySetupCommand') {
+      const payload = JSON.stringify({source:'setup-check',session:'manual',event:'session-start',mood:'happy',text:'Integration connected!',ttl:3000});
+      const quote = value => "'" + value.replace(/'/g, "'\"'\"'") + "'";
+      const psQuote = value => "'" + value.replace(/'/g, "''") + "'";
+      const endpoint = `http://127.0.0.1:${c.getPort()}/state`;
+      const command = process.platform === 'win32'
+        ? `Invoke-RestMethod -Uri ${psQuote(endpoint)} -Method Post -ContentType 'application/json' -Headers @{'X-Pet-Token'=${psQuote(c.effectiveToken())}} -Body ${psQuote(payload)}`
+        : `curl --fail --silent --show-error ${quote(endpoint)} -H 'Content-Type: application/json' -H ${quote('X-Pet-Token: ' + c.effectiveToken())} -d ${quote(payload)}`;
+      if (a.type === 'copySetupCommand') c.clipboard.writeText(command);
+      return {command, message:a.type === 'copySetupCommand' ? 'Command copied. It contains your local control token.' : 'Run this in your terminal, then check the last received event above for setup-check.'};
+    }
+    if (a.type === 'sampleEvent') {
+      const eventId = crypto.randomUUID();
+      const body = JSON.stringify({source:'setup-check',session:'sample',event:'session-start',eventId,mood:'happy',text:'Integration connected!',ttl:3000});
+      const received = await new Promise(resolve => {
+        const req = http.request({hostname:'127.0.0.1',port:c.getPort(),path:'/state',method:'POST',headers:{'X-Pet-Token':c.effectiveToken(),'Content-Type':'application/json'},timeout:2000}, res => {
+          res.resume(); res.on('end', () => resolve(res.statusCode === 200 && c.sessions.hasEvent({source:'setup-check',session:'sample',eventId})));
+        });
+        req.on('error', () => resolve(false)); req.on('timeout', () => req.destroy()); req.end(body);
+      });
+      c.getDiagnostics().lastSample = {at:Date.now(),ok:received};
+      return {message:received ? 'Sample event authenticated and received by the app. For a full integration check, run the terminal command below.' : 'Sample event failed. Check the local port and token.'};
+    }
     if (a.type === 'diagnostics') {
       const d = payload().diagnostics;
       return saveFile(
@@ -304,7 +337,7 @@ function installCompanion(c) {
         )
       );
     }
-    if (['open', 'ack', 'snoozePrompt'].includes(a.type)) {
+    if (['open', 'ack', 'snoozePrompt', 'dismiss'].includes(a.type)) {
       const prompt = c.openConfirms.get(a.key);
       if (!prompt) throw new Error('This prompt is no longer pending');
       if (a.type === 'open') {
@@ -312,6 +345,14 @@ function installCompanion(c) {
           throw new Error('This integration did not provide an openable link');
       }
       c.acknowledgeConfirm(a.key, a.type === 'snoozePrompt' ? 5 * 60000 : 0);
+      if (a.type === 'dismiss') {
+        c.openConfirms.delete(a.key);
+        c.sessions.dismiss(a.key);
+        const win = c.getWindow();
+        if (win && !win.isDestroyed()) win.webContents.send('ai-state', {source:prompt.source,session:prompt.session,key:a.key,mood:'idle',event:'idle',exact:true});
+        c.pushActivity();
+        return { message: 'Dismissed locally. No command was approved or cancelled in your assistant.' };
+      }
     } else if (a.type === 'snooze') {
       const minutes = [0, 15, 30, 60].includes(a.minutes) ? a.minutes : 0;
       store.set('snoozeUntil', minutes ? Date.now() + minutes * 60000 : 0);
@@ -524,7 +565,18 @@ function installCompanion(c) {
       });
       if (answer.response !== 0) return { cancelled: true };
       store.flushNow();
-      fs.copyFileSync(store.path, store.path + '.before-restore-' + Date.now());
+      const oldFile = store.get('sprite')?.file;
+      const backupPath = store.path + '.before-restore-' + Date.now();
+      const previousConfig = JSON.parse(fs.readFileSync(store.path, 'utf8'));
+      if (typeof oldFile === 'string' && /^sprite(?:-restored-\d+)?\.(png|gif|webp)$/.test(oldFile)) {
+        const oldPath = path.join(app.getPath('userData'), oldFile);
+        if (fs.existsSync(oldPath)) {
+          const savedImage = path.basename(backupPath) + path.extname(oldFile);
+          fs.copyFileSync(oldPath, path.join(app.getPath('userData'), savedImage));
+          previousConfig.sprite.file = savedImage;
+        }
+      }
+      fs.writeFileSync(backupPath, JSON.stringify(previousConfig, null, 2), {mode: 0o600});
       if (sprite)
         fs.writeFileSync(
           path.join(app.getPath('userData'), sprite.file),
@@ -533,6 +585,7 @@ function installCompanion(c) {
       store.set('sprite', sprite);
       apply(settings);
       store.flushNow();
+      removeManagedSprite(app.getPath('userData'), oldFile, sprite?.file);
       return {
         message: 'Settings restored. Authentication and task history were kept.'
       };
@@ -591,7 +644,7 @@ function installCompanion(c) {
         'pet-activity.csv',
         rows.map((r) => r.map(csvCell).join(',')).join('\r\n')
       );
-    } else if (!['open', 'ack', 'snoozePrompt'].includes(a.type))
+    } else if (!['open', 'ack', 'snoozePrompt', 'dismiss'].includes(a.type))
       throw new Error('Unknown action');
     return { message: 'Saved', state: payload() };
   }

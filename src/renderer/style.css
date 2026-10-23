@@ -1190,3 +1190,8 @@ body {
 @media (prefers-reduced-motion: reduce) {
   #pet.walking, #pet.walking .foot { animation: none; }
 }
+
+/* Low power keeps sleeping pets still and calms CSS idle loops. */
+.pet.low-power.mood-sleeping, .pet.low-power.mood-sleeping *,
+#pet.low-power.mood-sleeping, #pet.low-power.mood-sleeping * { animation-play-state: paused !important; }
+#pet.low-power.mood-idle, #pet.low-power.mood-idle * { animation-duration: 8s; }

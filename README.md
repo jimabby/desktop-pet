@@ -146,6 +146,40 @@ Linux’s **Launch at login** control is explicitly unavailable; configure start
 through your desktop environment. The app now constrains the window size to
 its display work area and rescues it after monitor changes.
 
+## Setup, recovery, and customization
+
+- **Companion center → Connect an integration** sends an authenticated sample
+  through the real state endpoint and checks receipt. Show or copy the terminal
+  command to test from your shell; it uses the current port and token. The command
+  contains your token, so keep it private. Verify `setup-check` in the last event.
+  Claude Code still uses the hook installer in Settings; no new external adapter
+  or account connection is required.
+- **Dismiss locally** removes stale prompts from the inbox and ends their local
+  waiting clock. It never approves or cancels a command in the assistant. A new
+  confirm event can reopen the prompt. Expired sessions show their last event
+  time and whether their lease ended or the computer suspended.
+- **Settings → Low-power animation** reduces 3D idle rendering from 30 to 10 FPS,
+  makes sleeping poses static, and suppresses spontaneous wandering and idle
+  gestures. **Use low power on battery** enables it automatically when the OS
+  reports battery power. Both options are off by default and included in profiles
+  and settings backups. This is not a measured battery-life guarantee.
+- **Settings → Sprite art** now previews frames and lets you choose each mood’s
+  row, frame count, and FPS. Row numbers in the editor start at 1. Grid dimensions
+  must divide the image evenly. Edits stay in the preview until **Apply animation
+  mapping**; **Discard mapping edits** reloads the saved mapping. Choosing an image
+  still imports it immediately. Reduced-motion mode shows a static preview.
+- **Companion center → Focus recaps** retains the last ten work-block summaries,
+  including early stops: completed tasks, measured active time, and outstanding
+  prompts at the end. Concurrent sessions contribute overlapping active time.
+  Recaps persist locally and are excluded from settings backups.
+
+Busy events without an explicit TTL receive a 120-second lease in both the
+session tracker and pet display. Renew long-running work with heartbeats.
+Source/session names containing `|` or `%` are kept independent. Position drafts
+survive periodic refreshes, and placement fits the destination monitor.
+Restored sprites are cleaned up when replaced or removed; before-restore config
+backups retain a separate copy of their previous image for recovery.
+
 ## Run it
 
 Requires [Node.js](https://nodejs.org) 22.12+ (needed by Electron 44).
@@ -238,25 +272,25 @@ combined glow, bouncy team-up animation, and a bubble like
 Try the three-AI state manually:
 
 ```bash
-curl -s localhost:7337/state -H 'Content-Type: application/json' \
+curl -s localhost:7337/state -H "X-Pet-Token: $PET_TOKEN" -H 'Content-Type: application/json' \
   -d '{"mood":"thinking","text":"Claude is planning...","source":"claude","ttl":15000}'
-curl -s localhost:7337/state -H 'Content-Type: application/json' \
+curl -s localhost:7337/state -H "X-Pet-Token: $PET_TOKEN" -H 'Content-Type: application/json' \
   -d '{"mood":"working","text":"ChatGPT is drafting...","source":"chatgpt","ttl":15000}'
-curl -s localhost:7337/state -H 'Content-Type: application/json' \
+curl -s localhost:7337/state -H "X-Pet-Token: $PET_TOKEN" -H 'Content-Type: application/json' \
   -d '{"mood":"thinking","text":"Gemini is checking...","source":"gemini","ttl":15000}'
 ```
 
 Send a specific source back to idle when it finishes:
 
 ```bash
-curl -s localhost:7337/state -H 'Content-Type: application/json' \
+curl -s localhost:7337/state -H "X-Pet-Token: $PET_TOKEN" -H 'Content-Type: application/json' \
   -d '{"mood":"idle","source":"gemini"}'
 ```
 
 Or clear every active AI:
 
 ```bash
-curl -s localhost:7337/state -H 'Content-Type: application/json' \
+curl -s localhost:7337/state -H "X-Pet-Token: $PET_TOKEN" -H 'Content-Type: application/json' \
   -d '{"mood":"idle"}'
 ```
 

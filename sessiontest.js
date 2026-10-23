@@ -120,3 +120,36 @@ try {
 console.log(
   'Session clocks, lifecycle, leases, export safety and config recovery passed.'
 );
+
+// Custom identifiers must remain independent, including retry-cache tuple boundaries.
+{
+  const {keyOf, leaseOf} = require('./src/sessions');
+  const s = createSessions(() => {}, () => now);
+  for (const entry of [{source:'a|b',session:'c'}, {source:'a',session:'b|c'}, {source:'a%7Cb',session:'c'}])
+    s.accept({...entry,event:'busy'});
+  assert.equal(s.list().length, 3);
+  assert.notEqual(keyOf({source:'a|b',session:'c'}), keyOf({source:'a',session:'b|c'}));
+  assert.equal(s.accept({source:'a',session:'x|y',event:'done',eventId:'z'}).duplicate, false);
+  assert.equal(s.accept({source:'a',session:'x',event:'done',eventId:'y|z'}).duplicate, false);
+  now += leaseOf({}) + 1; s.tick();
+  assert(s.list().filter(x => x.status === 'expired').every(x => x.expiryReason.includes('heartbeat')));
+  s.accept({source:'p',event:'confirm'}); s.dismiss(keyOf({source:'p'}));
+  assert.equal(s.list().find(x => x.source === 'p').status, 'dismissed');
+}
+{
+  const {geometry,removeManagedSprite} = require('./src/sprite-config');
+  assert.throws(() => geometry({cols:2,rows:1,fps:8,moods:{idle:{row:1,frames:2}}}));
+  const mapped = geometry({cols:2,rows:2,fps:8,moods:{idle:{row:1,frames:1,fps:4}}});
+  assert.deepEqual(mapped.moods.idle, {row:1,frames:1,fps:4});
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(),'pet-cleanup-'));
+  try {
+    for (const f of ['sprite-restored-123.png','sprite.png','other.png']) fs.writeFileSync(path.join(tmp,f),'x');
+    removeManagedSprite(tmp,'sprite-restored-123.png');
+    removeManagedSprite(tmp,'sprite.png','sprite.png');
+    removeManagedSprite(tmp,'other.png');
+    removeManagedSprite(tmp,'../other.png');
+    assert(!fs.existsSync(path.join(tmp,'sprite-restored-123.png')));
+    assert(fs.existsSync(path.join(tmp,'sprite.png')) && fs.existsSync(path.join(tmp,'other.png')));
+  } finally {fs.rmSync(tmp,{recursive:true,force:true});}
+}
+console.log('Collision-safe identities, expiry reasons, local dismissal and sprite validation/cleanup passed.');

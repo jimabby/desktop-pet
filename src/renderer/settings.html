@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline';" />
     <title>Pet Settings</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
@@ -162,6 +162,9 @@
 
     <h2>Behavior</h2>
     <div class="toggle"><span>Sound effects</span><input type="checkbox" id="sound" /></div>
+    <div class="toggle"><label for="lowPower">Low-power animation</label><input type="checkbox" id="lowPower" /></div>
+    <div class="toggle"><label for="lowPowerOnBattery">Use low power on battery</label><input type="checkbox" id="lowPowerOnBattery" /></div>
+    <div class="hint">Lower idle frame rate, still sleeping poses, and no spontaneous wandering.</div>
     <div class="toggle"><span>Time-of-day tint</span><input type="checkbox" id="timeOfDay" /></div>
     <div class="toggle"><span>Wander on its own</span><input type="checkbox" id="wander" /></div>
     <div class="toggle"><span>Throw physics</span><input type="checkbox" id="physics" /></div>
@@ -277,6 +280,15 @@
         <input type="number" id="spriteFps" min="1" max="60" />
       </div>
     </div>
+    <section id="spriteEditor" hidden>
+      <label for="spriteMood">Preview mood</label>
+      <select id="spriteMood"></select>
+      <canvas id="spriteCanvas" width="240" height="180" aria-label="Sprite animation preview"></canvas>
+      <p id="spriteValidation" role="status"></p>
+      <div id="spriteMappings"></div>
+      <button type="button" id="spriteApply">Apply animation mapping</button>
+      <button type="button" id="spriteReset">Discard mapping edits</button>
+    </section>
     <div class="hint" id="spriteHint" hidden>
       Columns are animation frames; rows are moods, top to bottom:
       idle, thinking, working, happy, stressed, sleeping, error. A sheet with
@@ -289,5 +301,6 @@
 
     <script src="pet3d.bundle.js"></script>
     <script src="settings.js"></script>
+    <script src="sprite-editor.js"></script>
   </body>
 </html>

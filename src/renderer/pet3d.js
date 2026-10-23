@@ -62,10 +62,13 @@ function createView(host) {
   function draw(now) {
     raf = 0;
     if (!active() || stopped) return;
-    if (now - lastFrame < 1000 / 30) { raf = requestAnimationFrame(draw); return; }
+    const lowPower = owner.classList.contains('low-power');
+    const sleeping = owner.classList.contains('mood-sleeping');
+    const fps = lowPower && desiredClip() === 'idle' ? 10 : 30;
+    if (now - lastFrame < 1000 / fps) { raf = requestAnimationFrame(draw); return; }
     const dt = Math.min((now - lastFrame) / 1000 || 0, .08);
     lastFrame = now;
-    mixer.update(reduced.matches ? 0 : dt);
+    mixer.update(reduced.matches || (lowPower && sleeping) ? 0 : dt);
     // Turn toward the direction of a walk (three-quarter, so the face stays
     // visible), easing back to the resting pose afterwards.
     const facing = owner.classList.contains('face-left') ? -.85 : owner.classList.contains('face-right') ? .85 : -.12;
@@ -95,7 +98,7 @@ function createView(host) {
     // Restore mixer-owned transforms; otherwise static tracks can accumulate
     // cursor offsets or keep the eyes compressed after a blink.
     for (const [object, property, value] of overlays) object[property].copy(value);
-    if (!reduced.matches) raf = requestAnimationFrame(draw);
+    if (!reduced.matches && !(lowPower && sleeping)) raf = requestAnimationFrame(draw);
   }
   function wake() {
     if (active() && !raf && !stopped) { lastFrame = performance.now() - 34; raf = requestAnimationFrame(draw); }
@@ -117,7 +120,7 @@ function createView(host) {
       next.fadeIn(.2).play();
       action = next;
     }
-    if (reduced.matches) {
+    if (reduced.matches || (owner.classList.contains('low-power') && desiredClip() === 'sleeping')) {
       mixer.stopAllAction();
       next.reset().play();
       mixer.update(.35); // settled expression, no continuously moving limbs

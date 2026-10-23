@@ -185,3 +185,26 @@ console.log('Renderer audit regressions passed: prompt priority, per-session ack
   assert.equal(h.run('pendingLink'),'','resolved prompt link must disappear even on a silent busy event');
   assert(!h.run('confirmPending'));
 }
+
+{
+  const {keyOf,leaseOf} = require('./src/sessions');
+  const h = harness();
+  h.events.onSettings({lowPower:true});
+  h.events.onAiState({mood:'working',source:'custom',ttl:leaseOf({})});
+  assert(h.node('pet').classList.contains('low-power'));
+  h.advance(120001);
+  assert.equal(h.run('activeAis.size'),0);
+  for (const source of ['a', 'a|b']) h.events.onAiState({source,key:keyOf({source}),mood:'thinking',event:'confirm',attention:true});
+  h.events.onAiState({source:'a',mood:'idle'});
+  assert.equal(h.run('pendingConfirms.size'),1);
+  assert.equal(h.run('confirmInfo.key'),keyOf({source:'a|b'}));
+}
+
+{
+  const h = harness();
+  h.events.onFocus({phase:'break',minutes:5,recap:{tasks:3,activeMs:65000,pending:1}});
+  assert.match(h.node('bubble-text').textContent,/3 done/);
+  h.events.onAiState({mood:'thinking',source:'claude',attention:true,text:'Allow task?'});
+  h.events.onFocus({phase:'break',recap:{tasks:2,activeMs:1000,pending:1}});
+  assert.match(h.node('bubble-text').textContent,/Allow task/);
+}

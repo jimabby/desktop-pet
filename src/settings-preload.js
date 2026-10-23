@@ -13,7 +13,9 @@ contextBridge.exposeInMainWorld('settingsAPI', {
   installHooks: () => ipcRenderer.invoke('settings:installHooks'),
 
   // Sprite-sheet art. The picker runs in main (it needs a native file dialog),
-  // stores the image, and hands back only its metadata — never the image data.
+  // stores the image and returns metadata. Preview reads the managed image on demand.
+  spritePreview: () => ipcRenderer.invoke('settings:spritePreview'),
+  applySprite: (geom) => ipcRenderer.invoke('settings:applySprite', geom),
   pickSprite: () => ipcRenderer.invoke('settings:pickSprite'),
   setSprite: (geom) => ipcRenderer.send('settings:setSprite', geom),
   clearSprite: () => ipcRenderer.send('settings:clearSprite')

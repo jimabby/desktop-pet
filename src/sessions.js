@@ -1,7 +1,8 @@
 'use strict';
 
-const keyOf = (s) =>
-  `${(s.source || '').trim().toLowerCase()}|${s.session || ''}`;
+const component = value => String(value || '').replace(/%/g, '%25').replace(/\|/g, '%7C');
+const keyOf = s => `${component((s.source || '').trim().toLowerCase())}|${component(s.session)}`;
+const leaseOf = s => s.leaseMs || s.ttl || 120000;
 function eventOf(s) {
   if (s.event) return s.event;
   if (s.attention || s.link) return 'confirm';
@@ -24,7 +25,9 @@ function createSessions(onTime, clock = Date.now) {
     }
     if (s.status === 'confirm') s.waitingMs += Math.max(0, now - s.accountedAt);
     s.accountedAt = now;
-    if (now >= s.expiresAt && s.status === 'busy') s.status = 'expired';
+    if (now >= s.expiresAt && s.status === 'busy') {
+      s.status = 'expired'; s.expiryReason = 'No event or heartbeat arrived before the lease ended';
+    }
   }
   function tick() {
     const now = clock();
@@ -43,7 +46,7 @@ function createSessions(onTime, clock = Date.now) {
     const now = clock(),
       key = keyOf(state),
       event = eventOf(state);
-    const id = state.eventId ? `${key}|${state.eventId}` : '';
+    const id = state.eventId ? JSON.stringify([key, state.eventId]) : '';
     if (id && seen.has(id)) return { key, event, duplicate: true };
     if (id) {
       seen.set(id, now);
@@ -69,7 +72,7 @@ function createSessions(onTime, clock = Date.now) {
           : event;
     const continuing =
       previous && ['busy', 'confirm'].includes(previous.status);
-    const lease = state.leaseMs || state.ttl || 120000;
+    const lease = leaseOf(state);
     sessions.set(key, {
       key,
       source: (state.source || '').trim().toLowerCase(),
@@ -91,13 +94,18 @@ function createSessions(onTime, clock = Date.now) {
   function suspend() {
     tick();
     for (const s of sessions.values())
-      if (s.status === 'busy') s.status = 'expired';
+      if (s.status === 'busy') { s.status = 'expired'; s.expiryReason = 'Computer suspended'; }
   }
   return {
     accept,
+    hasEvent: state => !!state.eventId && seen.has(JSON.stringify([keyOf(state), state.eventId])),
     tick,
     suspend,
+    dismiss(key) {
+      tick(); const s = sessions.get(key);
+      if (s) { s.status = 'dismissed'; s.updatedAt = clock(); }
+    },
     list: () => [...sessions.values()].map((s) => ({ ...s }))
   };
 }
-module.exports = { createSessions, keyOf, eventOf };
+module.exports = { createSessions, keyOf, eventOf, leaseOf };

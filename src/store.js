@@ -11,6 +11,9 @@ function createStore(app) {
 
   const defaults = {
     affection: 0,
+    lowPower: false,
+    lowPowerOnBattery: false,
+    focusRecaps: [],
     snoozeUntil: 0,
     quietFocus: false,
     presentation: false,
@@ -142,6 +145,7 @@ function validateConfig(saved, defaults) {
   else data.stats = { date: data.stats.date, perAi: Object.fromEntries(Object.entries(data.stats.perAi).filter(([,v]) => obj(v)).map(([k,v]) => [k, { tasks: num(v.tasks), confirms: num(v.confirms), errors: num(v.errors), activeMs: num(v.activeMs) }])) };
   data.events = Array.isArray(data.events) ? data.events.filter(e => obj(e) && Number.isFinite(e.at) && typeof e.source === 'string' && typeof e.text === 'string' && ['done','error','confirm'].includes(e.kind)).slice(-50) : [];
   data.weekHistory = Array.isArray(data.weekHistory) ? data.weekHistory.filter(d => obj(d) && /^\d{4}-\d{2}-\d{2}$/.test(d.date)).map(d => ({date:d.date,tasks:num(d.tasks),activeMs:num(d.activeMs)})).slice(-7) : [];
+  data.focusRecaps = Array.isArray(data.focusRecaps) ? data.focusRecaps.filter(r => obj(r) && Number.isFinite(r.startedAt) && Number.isFinite(r.endedAt)).slice(-10).map(r => ({startedAt:r.startedAt,endedAt:r.endedAt,tasks:num(r.tasks),activeMs:num(r.activeMs),pending:num(r.pending),completed:r.completed === true})) : [];
   if (!obj(data.profiles)) data.profiles = {};
   for (const key of ['focus','quiet']) if (!obj(data[key])) data[key] = {...defaults[key]};
   data.focus = {work: Math.max(1, Math.min(180, Number(data.focus.work) || 25)), break: Math.max(1, Math.min(60, Number(data.focus.break) || 5))};

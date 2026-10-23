@@ -134,6 +134,8 @@ function save(fields) {
 }
 
 const FIELD_SAVERS = {
+  lowPower: () => ({lowPower: $('lowPower').checked}),
+  lowPowerOnBattery: () => ({lowPowerOnBattery: $('lowPowerOnBattery').checked}),
   sound: () => ({ muted: !$('sound').checked }), // UI shows "Sound effects" (inverse of muted)
   timeOfDay: () => ({ timeOfDay: $('timeOfDay').checked }),
   wander: () => ({ wander: $('wander').checked }),
@@ -160,6 +162,7 @@ function renderSprite(sprite) {
   $('spriteGeom').hidden = !has;
   $('spriteHint').hidden = !has;
   $('spriteClear').disabled = !has;
+  window.dispatchEvent(new CustomEvent('sprite-metadata', {detail:sprite}));
   if (has) {
     $('spriteStatus').textContent = `Using ${sprite.name} — ${sprite.cols}×${sprite.rows} @ ${sprite.fps} fps.`;
     $('spriteCols').value = sprite.cols;
@@ -168,14 +171,6 @@ function renderSprite(sprite) {
   } else {
     $('spriteStatus').textContent = 'Using the built-in drawn pet.';
   }
-}
-
-function saveSpriteGeometry() {
-  window.settingsAPI.setSprite({
-    cols: Number($('spriteCols').value) || 1,
-    rows: Number($('spriteRows').value) || 1,
-    fps: Number($('spriteFps').value) || 8
-  });
 }
 
 $('spritePick').addEventListener('click', async () => {
@@ -189,9 +184,7 @@ $('spriteClear').addEventListener('click', () => {
   renderSprite(null);
 });
 
-['spriteCols', 'spriteRows', 'spriteFps'].forEach((id) =>
-  $(id).addEventListener('change', saveSpriteGeometry)
-);
+// Geometry and per-mood edits are previewed and applied together by sprite-editor.js.
 
 nameInput.addEventListener('input', () => {
   renderPreview();
@@ -253,6 +246,8 @@ function applyConfig(next) {
     if (document.activeElement !== el) el.value = value;
   };
   setValue(nameInput, cfg.name || '');
+  $('lowPower').checked = !!cfg.lowPower;
+  $('lowPowerOnBattery').checked = !!cfg.lowPowerOnBattery;
   $('sound').checked = !cfg.muted;
   $('timeOfDay').checked = cfg.timeOfDay !== false;
   $('wander').checked = cfg.wander !== false;
@@ -304,7 +299,9 @@ function applyConfig(next) {
     ? '✓ Installed in ~/.claude/settings.json.'
     : `Adds the pet to ~/.claude/settings.json (backed up first), running ${cfg.hooksPath}. Needs Node.js.`;
 
-  renderSprite(cfg.sprite);
+  if (JSON.stringify(cfg.sprite) !== JSON.stringify(window.savedSpriteMetadata)) {
+    window.savedSpriteMetadata = cfg.sprite; renderSprite(cfg.sprite);
+  }
   renderSwatches();
   renderSkins();
   renderCosmetics();

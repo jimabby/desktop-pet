@@ -3,6 +3,10 @@
   const hub = document.getElementById('companion');
   const status = document.getElementById('companion-status');
   let current;
+  let setupCommand = '';
+  let resetPosition = false;
+  const sections = new Map();
+  let displaySignature = '';
   function button(label, action) {
     const b = document.createElement('button');
     b.textContent = label;
@@ -12,9 +16,11 @@
       b.disabled = true;
       try {
         const r = await window.statsAPI.action(action());
+        if (r.command) setupCommand = r.command;
         status.textContent = r.ok
           ? r.message || 'Saved'
           : r.error || 'Could not complete action';
+        if (r.ok && ['position','loadProfile','restore'].includes(action().type)) resetPosition = true;
         await refresh();
       } catch (e) {
         status.textContent = e.message;
@@ -25,11 +31,13 @@
     return b;
   }
   function section(title) {
-    const s = document.createElement('section'),
+    const s = sections.get(title) || document.createElement('section'),
       h = document.createElement('h2');
+    if (!sections.has(title)) { sections.set(title, s); hub.append(s); }
+    if (title === 'Perch & profiles' && s.children.length && !resetPosition) return s;
+    s.replaceChildren();
     h.textContent = title;
     s.append(h);
-    hub.append(s);
     return s;
   }
   function line(parent, text) {
@@ -61,16 +69,12 @@
   }
   function render(data) {
     current = data;
-    // Keep focused controls intact during periodic updates.
-    if (
-      hub.contains(document.activeElement) &&
-      document.activeElement.tagName === 'SELECT'
-    )
-      return;
+    const nextDisplays = JSON.stringify(data.displays);
+    if (displaySignature && displaySignature !== nextDisplays) resetPosition = true;
+    displaySignature = nextDisplays;
     const focusedAction = hub.contains(document.activeElement)
       ? document.activeElement.dataset.action
       : null;
-    hub.replaceChildren();
     const d = section('Connection');
     const last = data.diagnostics.lastEvent;
     line(
@@ -92,9 +96,19 @@
       button('Test connection', () => ({ type: 'test' })),
       button('Export diagnostics', () => ({ type: 'diagnostics' }))
     );
+    const setup = section('Connect an integration');
+    line(setup, '1. Send a sample to check this app. 2. Generate and run a command in your terminal. 3. Verify that setup-check appears as the last received event. For Claude Code, install hooks in Settings and start a new session.');
+    setup.append(button('Send sample event', () => ({type:'sampleEvent'})), button('Show terminal command', () => ({type:'setupCommand'})));
+    if (data.diagnostics.lastSample) line(setup, `Sample ${data.diagnostics.lastSample.ok ? 'received' : 'failed'} at ${time(data.diagnostics.lastSample.at)}`);
+    if (setupCommand) {
+      line(setup, 'This command contains your local token. Keep it private; regenerate it after changing the token or port.');
+      const command = document.createElement('textarea'); command.readOnly = true; command.value = setupCommand; command.rows = 5; command.setAttribute('aria-label', 'Authenticated setup command');
+      setup.append(command, button('Copy terminal command', () => ({type:'copySetupCommand'})));
+    }
     const inbox = section('Sessions & prompts');
     if (!data.sessions.length && !data.prompts.length)
       line(inbox, 'No active sessions or waiting prompts.');
+    line(inbox, 'Dismiss removes a stale prompt from this pet. It does not approve or cancel anything in your assistant.');
     const prompts = new Map(data.prompts.map((p) => [p.key, p]));
     for (const session of data.sessions) {
       const row = document.createElement('article');
@@ -103,6 +117,7 @@
         `${session.project || session.source || 'AI'} · ${session.session || 'default'} · ${session.status} · ${duration(session.activeMs)} working · ${duration(session.waitingMs)} waiting`
       );
 
+      line(row, `Last event ${time(session.updatedAt)}${session.status === 'expired' ? ' · ' + session.expiryReason : ''}`);
       const p = prompts.get(session.key);
       if (p) {
         renderPrompt(row, p);
@@ -115,6 +130,12 @@
       renderPrompt(row, p);
       inbox.append(row);
     }
+    const recaps = section('Focus recaps');
+    if (!data.focusRecaps?.length) line(recaps, 'Finish a focus work block to see completed tasks, active time, and outstanding prompts here.');
+    for (const recap of [...(data.focusRecaps || [])].reverse()) {
+      line(recaps, `${new Date(recap.endedAt).toLocaleString()} · ${recap.completed ? 'Completed' : 'Stopped early'} · ${recap.tasks} done · ${duration(recap.activeMs)} active · ${recap.pending} waiting at the end`);
+    }
+    line(recaps, 'Active time sums working sessions; parallel sessions can exceed the block’s elapsed time.');
     const quiet = section('Quiet & presentation');
     line(
       quiet,
@@ -153,45 +174,48 @@
       }))
     );
     const positions = section('Perch & profiles');
-    const displays = select(
-      'Display',
-      data.displays.map((d) => [d.id, d.label]),
-      data.preferredDisplay || data.displays[0]?.id
-    );
-    const corner = select(
-      'Corner',
-      ['top-left', 'top-right', 'bottom-left', 'bottom-right'].map((v) => [
-        v,
-        v.replace('-', ' ')
-      ]),
-      data.preferredCorner
-    );
-    const perch = select(
-      'Movement',
-      [
-        ['false', 'Wandering allowed'],
-        ['true', 'Stationary perch']
-      ],
-      String(!!data.perch)
-    );
-    positions.append(
-      displays.label,
-      corner.label,
-      perch.label,
-      button('Set position', () => ({
-        type: 'position',
-        display: displays.input.value,
-        corner: corner.input.value,
-        perch: perch.input.value === 'true'
-      }))
-    );
-    for (const name of data.profiles) {
-      const row = document.createElement('p');
-      row.append(
-        button(`Use ${name}`, () => ({ type: 'loadProfile', name })),
-        button(`Save current as ${name}`, () => ({ type: 'saveProfile', name }))
+    if (positions.children.length === 1 || resetPosition) {
+      resetPosition = false;
+      const displays = select(
+        'Display',
+        data.displays.map((d) => [d.id, d.label]),
+        data.preferredDisplay || data.displays[0]?.id
       );
-      positions.append(row);
+      const corner = select(
+        'Corner',
+        ['top-left', 'top-right', 'bottom-left', 'bottom-right'].map((v) => [
+          v,
+          v.replace('-', ' ')
+        ]),
+        data.preferredCorner
+      );
+      const perch = select(
+        'Movement',
+        [
+          ['false', 'Wandering allowed'],
+          ['true', 'Stationary perch']
+        ],
+        String(!!data.perch)
+      );
+      positions.append(
+        displays.label,
+        corner.label,
+        perch.label,
+        button('Set position', () => ({
+          type: 'position',
+          display: displays.input.value,
+          corner: corner.input.value,
+          perch: perch.input.value === 'true'
+        }))
+      );
+      for (const name of data.profiles) {
+        const row = document.createElement('p');
+        row.append(
+          button(`Use ${name}`, () => ({ type: 'loadProfile', name })),
+          button(`Save current as ${name}`, () => ({ type: 'saveProfile', name }))
+        );
+        positions.append(row);
+      }
     }
     const backup = section('Backup & export');
     line(
@@ -218,7 +242,8 @@
       row.append(button('Open', () => ({ type: 'open', key: p.key })));
     row.append(
       button('Acknowledge', () => ({ type: 'ack', key: p.key })),
-      button('Snooze 5m', () => ({ type: 'snoozePrompt', key: p.key }))
+      button('Snooze 5m', () => ({ type: 'snoozePrompt', key: p.key })),
+      button('Dismiss locally', () => ({ type: 'dismiss', key: p.key }))
     );
   }
   let refreshing = false;

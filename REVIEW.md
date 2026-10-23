@@ -1,3 +1,5 @@
+> Historical review. Some findings and feature proposals below were resolved by later changes. See [CURRENT-AUDIT.md](CURRENT-AUDIT.md) for the latest implementation status and validation.
+
 For the latest audit and implementation follow-up, see [PROJECT-AUDIT.md](PROJECT-AUDIT.md).
 
 # Project review

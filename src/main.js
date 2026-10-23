@@ -2,7 +2,7 @@
 
 const {
   app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, shell, globalShortcut,
-  Notification, dialog, powerMonitor
+  Notification, dialog, powerMonitor, clipboard
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -11,9 +11,10 @@ const crypto = require('crypto');
 const { execFile } = require('child_process');
 const { startControlServer, ALLOWED_LINK_SCHEMES } = require('./server');
 const { createStore } = require('./store');
-const { createSessions, eventOf } = require('./sessions');
+const { createSessions, eventOf, keyOf, leaseOf } = require('./sessions');
 const { installCompanion } = require('./companion');
 const { decodeSprite } = require('./sprite-image');
+const { geometry, removeManagedSprite } = require('./sprite-config');
 const { parseClock, isQuietNow } = require('./quiet');
 const { mergePetHooks, petHooksInstalled } = require('./claude-hooks');
 
@@ -92,6 +93,10 @@ function ensureToken() {
 // notifications, no escalating nudges. The window maths lives in ./quiet so it
 // can be tested without Electron.
 // ---------------------------------------------------------------------------
+function lowPowerActive() {
+  return !!store.get('lowPower') || (!!store.get('lowPowerOnBattery') && !!powerMonitor.isOnBatteryPower?.());
+}
+
 function inQuietHours(now = new Date()) {
   return store.get('presentation') || store.get('quietFocus') || now.getTime() < store.get('snoozeUntil') || isQuietNow(store.get('quiet'), now);
 }
@@ -194,7 +199,7 @@ function scheduleWander() {
   }, 14000 + Math.random() * 20000);
 }
 function maybeWander() {
-  if (store.get('wander') === false || store.get('perch') || inQuietHours()) return;
+  if (lowPowerActive() || store.get('wander') === false || store.get('perch') || inQuietHours()) return;
   if (!win || win.isDestroyed() || !win.isVisible() || isDragging || moveAnim || focusState) return;
   // Only an idle, awake pet with nothing pending goes for a stroll.
   if (petState.mood !== 'idle' || petState.busy || petState.confirm || petState.reducedMotion) return;
@@ -261,7 +266,9 @@ function watchDisplays() {
 }
 
 function createWindow() {
-  const scale = fitScale(store.get('scale'));
+  const savedDisplay = Number.isFinite(store.get('x')) && Number.isFinite(store.get('y'))
+    ? screen.getDisplayMatching({x:store.get('x'),y:store.get('y'),width:WIN_W,height:WIN_H}) : screen.getPrimaryDisplay();
+  const scale = fitScale(store.get('scale'), savedDisplay);
   store.set('scale', scale);
   const w = Math.round(WIN_W * scale);
   const h = Math.round(WIN_H * scale);
@@ -368,6 +375,7 @@ function pushSettings() {
     // Quiet hours read as "muted" to the renderer's sound + nudge logic, but
     // are surfaced separately so the pet can also skip the escalating bounce.
     quiet: inQuietHours(),
+    lowPower: lowPowerActive(),
     ctxMax: ctxMax(),
     appearance: appearance()
   });
@@ -577,6 +585,7 @@ function statsEntry(stats, source) {
 }
 const sessions = createSessions((source, start, end) => {
   if (!store || !source) return;
+  if (focusState?.phase === 'work') focusState.activeMs += Math.max(0, Math.min(end, focusState.endsAt) - Math.max(start, focusState.startedAt));
   while (start < end) {
     const date = new Date(start), key = date.toLocaleDateString('en-CA');
     const next = new Date(start); next.setHours(24, 0, 0, 0);
@@ -625,7 +634,7 @@ function wakeSnoozedConfirms() {
 const openConfirms = new Map(); // key -> { at, source, session, text, link }
 
 function sourceKey(state) {
-  return `${(state.source || '').toLowerCase().trim()}|${state.session || ''}`;
+  return keyOf(state);
 }
 
 function classify(state) {
@@ -672,6 +681,7 @@ function recordStat(state, info) {
   if (kind === 'confirm' && !repeat) a.confirms++;
   if (kind === 'error' && !repeat) a.errors++;
   if (kind === 'done' && !repeat) {
+    if (focusState?.phase === 'work' && Date.now() <= focusState.endsAt) focusState.tasks++;
     a.tasks++; // a completed turn/task
     bumpLifetime();
   }
@@ -848,8 +858,8 @@ function scheduleTrayRefresh() {
 
 // Resize the pet by changing the window size + matching the page zoom, keeping
 // the pet (which sits at the bottom-center) visually anchored in place.
-function applyScale(scale) {
-  scale = fitScale(scale, win ? screen.getDisplayMatching(win.getBounds ? win.getBounds() : {x:win.getPosition()[0],y:win.getPosition()[1],width:win.getSize()[0],height:win.getSize()[1]}) : screen.getPrimaryDisplay());
+function applyScale(scale, destination) {
+  scale = fitScale(scale, destination || (win ? screen.getDisplayMatching(win.getBounds ? win.getBounds() : {x:win.getPosition()[0],y:win.getPosition()[1],width:win.getSize()[0],height:win.getSize()[1]}) : screen.getPrimaryDisplay()));
   store.set('scale', scale);
   if (!win) return;
 
@@ -1112,11 +1122,20 @@ function focusDurations() {
   };
 }
 
+function finishFocusRecap(completed) {
+  if (focusState?.phase !== 'work') return;
+  sessions.tick();
+  const recap = {startedAt:focusState.startedAt,endedAt:Math.min(Date.now(),focusState.endsAt),tasks:focusState.tasks,activeMs:focusState.activeMs,pending:openConfirms.size,completed};
+  store.set('focusRecaps', [...(store.get('focusRecaps') || []), recap].slice(-10));
+  pushActivity();
+  return recap;
+}
 function startFocusPhase(phase) {
+  const recap = finishFocusRecap(true);
   if (focusState) { store.set('quietFocus', false); pushSettings(); }
   const minutes = focusDurations()[phase];
-  focusState = { phase, endsAt: Date.now() + minutes * 60000 };
-  if (win) win.webContents.send('focus', { phase, minutes });
+  focusState = { phase, startedAt: Date.now(), endsAt: Date.now() + minutes * 60000, tasks: 0, activeMs: 0 };
+  if (win) win.webContents.send('focus', { phase, minutes, recap });
   clearTimeout(focusTimer);
   focusTimer = setTimeout(() => {
     startFocusPhase(phase === 'work' ? 'break' : 'work');
@@ -1125,12 +1144,13 @@ function startFocusPhase(phase) {
 }
 
 function stopFocus() {
+  const recap = finishFocusRecap(false);
   clearTimeout(focusTimer);
   focusTimer = null;
   focusState = null;
   store.set('quietFocus', false);
   pushSettings();
-  if (win) win.webContents.send('focus', { phase: null });
+  if (win) win.webContents.send('focus', { phase: null, recap });
   buildTrayMenu();
 }
 
@@ -1416,6 +1436,8 @@ function settingsPayload() {
     wander: store.get('wander') !== false,
     physics: store.get('physics') !== false,
     muted: !!store.get('muted'),
+    lowPower: !!store.get('lowPower'),
+    lowPowerOnBattery: !!store.get('lowPowerOnBattery'),
     hotkey: store.get('hotkey') || '',
     confirmHotkey: store.get('confirmHotkey') || '',
     hotkeyErrors: { ...hotkeyErrors },
@@ -1469,6 +1491,7 @@ ipcMain.on('settings:set', (_e, cfg) => {
   if (typeof cfg.notifyWhenHidden === 'boolean') {
     trayDirty = setIfChanged('notifyWhenHidden', cfg.notifyWhenHidden) || trayDirty;
   }
+  for (const k of ['lowPower','lowPowerOnBattery']) if (typeof cfg[k] === 'boolean') setIfChanged(k, cfg[k]);
   if (typeof cfg.autoUpdate === 'boolean') setIfChanged('autoUpdate', cfg.autoUpdate);
   if (typeof cfg.stressTokens === 'number' && cfg.stressTokens >= 0) {
     setIfChanged('stressTokens', Math.min(2e6, Math.round(cfg.stressTokens)));
@@ -1555,7 +1578,7 @@ function buildSprite(file, geom = {}) {
 function spriteMeta() {
   const sp = spriteConfig();
   if (!sp) return null;
-  return { cols: sp.cols, rows: sp.rows, fps: sp.fps, name: sp.name || 'sprite sheet' };
+  return { cols: sp.cols, rows: sp.rows, fps: sp.fps, moods: sp.moods, name: sp.name || 'sprite sheet' };
 }
 
 function removeSpriteFiles() {
@@ -1622,9 +1645,26 @@ ipcMain.handle('settings:pickSprite', async () => {
   const prev = spriteConfig() || {};
   const sprite = buildSprite('sprite' + ext, prev);
   sprite.name = path.basename(file);
+  const oldFile = store.get('sprite')?.file;
   store.set('sprite', sprite);
+  store.flushNow();
+  removeManagedSprite(app.getPath('userData'), oldFile, sprite.file);
   pushSprite();
   return { ok: true, sprite: spriteMeta() };
+});
+
+ipcMain.handle('settings:spritePreview', () => {
+  const sp = spriteConfig();
+  return sp ? { ...spriteMeta(), url: spriteImageUrl(sp) } : null;
+});
+ipcMain.handle('settings:applySprite', (_e, input) => {
+  try {
+    const sp = spriteConfig();
+    if (!sp) throw new Error('Choose an image first');
+    const next = { ...sp, ...geometry(input) };
+    store.set('sprite', next); pushSprite(); pushSettingsWindow();
+    return { ok: true, sprite: spriteMeta() };
+  } catch (e) { return { ok: false, error: e.message }; }
 });
 
 ipcMain.on('settings:setSprite', (_e, geom) => {
@@ -1642,7 +1682,10 @@ ipcMain.on('settings:setSprite', (_e, geom) => {
 
 ipcMain.on('settings:clearSprite', () => {
   if (!store.get('sprite')) return;
+  const oldFile = store.get('sprite')?.file;
   store.set('sprite', null);
+  store.flushNow();
+  removeManagedSprite(app.getPath('userData'), oldFile);
   removeSpriteFiles();
   pushSprite();
 });
@@ -1930,7 +1973,7 @@ if (!app.requestSingleInstanceLock()) {
     store = createStore(app);
     // Focus timers are not resumed across process restarts.
     store.set('quietFocus', false);
-    installCompanion({ app, ipcMain, dialog, nativeImage, BrowserWindow, screen, store, sessions, openConfirms,
+    installCompanion({ app, ipcMain, dialog, clipboard, nativeImage, BrowserWindow, screen, store, sessions, openConfirms,
       getWindow: () => win, getStatsWindow: () => statsWin, activityReport, settingsPayload,
       pushSettings, pushSprite, pushActivity, applyScale, savePosition, buildTrayMenu,
       acknowledgeConfirm, openLinkSafely, inQuietHours, getDiagnostics: () => diagnostics,
@@ -1946,6 +1989,8 @@ if (!app.requestSingleInstanceLock()) {
       if(nextQuiet !== quietState) {quietState = nextQuiet;pushSettings();}
     }, 1000);
     if (powerMonitor.on) {
+      powerMonitor.on('on-battery', pushSettings);
+      powerMonitor.on('on-ac', pushSettings);
       powerMonitor.on('suspend', () => { sessions.suspend(); });
       powerMonitor.on('resume', () => {
         rescueOffscreenWindow(); pushSettings();
@@ -2007,7 +2052,7 @@ if (!app.requestSingleInstanceLock()) {
       (state) => {
         if (state.event === 'session-end' || state.event === 'idle') state.mood = 'idle';
         if (eventOf(state) === 'confirm') state.attention = true;
-        diagnostics.lastEvent = { at: Date.now(), source: state.source, session: state.session, event: eventOf(state) };
+        diagnostics.lastEvent = { at: Date.now(), source: state.source, session: state.session, event: eventOf(state), eventId: state.eventId };
         const accepted = sessions.accept(state);
         if (accepted.duplicate) return;
         const info = classify(state);
@@ -2016,7 +2061,7 @@ if (!app.requestSingleInstanceLock()) {
         // The renderer tracks sessions by the same key, so hand it over rather
         // than have two places derive it.
         const prompt = openConfirms.get(info.key);
-        const forwarded = { ...state, key: info.key, ttl: state.leaseMs || state.ttl,
+        const forwarded = { ...state, key: info.key, ttl: ['busy', 'start'].includes(eventOf(state)) ? leaseOf(state) : state.leaseMs || state.ttl,
           suppressed: info.repeat && !!(prompt?.acked || prompt?.snoozedUntil > Date.now()) };
         if (eventOf(state) === 'done') forwarded.mood = 'happy';
         pushActivity();

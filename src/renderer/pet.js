@@ -55,6 +55,7 @@ let muted = false;
 // whenever it flips. The pet keeps working; it just stops making noise and
 // stops escalating its nudges.
 let quiet = false;
+let lowPower = false;
 
 // Moods that mean an AI is actively busy (used to time how long a task ran).
 const BUSY_MOODS = new Set(['thinking', 'working', 'stressed']);
@@ -84,6 +85,8 @@ const SOURCE_LABELS = {
 // Settings from main (mute toggle)
 // ---------------------------------------------------------------------------
 window.petAPI.onSettings((s) => {
+  lowPower = !!s.lowPower;
+  pet.classList.toggle('low-power', lowPower);
   if (typeof s.muted === 'boolean') muted = s.muted;
   if (typeof s.quiet === 'boolean') {
     quiet = s.quiet;
@@ -357,7 +360,7 @@ function burst(type, count) {
 const PERSISTENT_FLAGS = [
   'blink', 'attention', 'attention-strong', 'party',
   'grabbed', 'rainbow', 'focusing', 'has-sprite', 'has-model',
-  'walking', 'face-left', 'face-right',
+  'walking', 'face-left', 'face-right', 'low-power',
   // The task-done flourish outlives the setMood() that triggers it.
   'big-celebrate'
 ];
@@ -675,7 +678,8 @@ window.petAPI.onAiState((state) => {
   stopWalking();
   lastInteraction = Date.now();
   const source = normalizeSource(state.source);
-  const key = state.key || `${source}|${state.session || ''}`;
+  const escapeKey = v => String(v || '').replace(/%/g, '%25').replace(/\|/g, '%7C');
+  const key = state.key || `${escapeKey(source)}|${escapeKey(state.session)}`;
   const prefix = state.source ? `${sourceName(source)}: ` : '';
   const goingIdle = state.mood === 'idle';
   const isConfirm = state.event ? state.event === 'confirm' : !!(state.attention || state.link);
@@ -689,9 +693,9 @@ window.petAPI.onAiState((state) => {
   const confirmShownBefore = confirmInfo.key;
   const hadPendingConfirm = confirmPending;
   if (!isConfirm) {
-    if (goingIdle && !state.source) pendingConfirms.clear();
-    else if (goingIdle && !state.session) {
-      [...pendingConfirms.keys()].filter((k) => k.startsWith(source + '|')).forEach((k) => pendingConfirms.delete(k));
+    if (goingIdle && !state.exact && !state.source) pendingConfirms.clear();
+    else if (goingIdle && !state.exact && !state.session) {
+      [...pendingConfirms].filter(([, p]) => p.source === source).forEach(([k]) => pendingConfirms.delete(k));
     } else pendingConfirms.delete(key);
     if (pendingConfirms.size) showLatestConfirm();
     else {
@@ -706,8 +710,8 @@ window.petAPI.onAiState((state) => {
       if (a && a.timer) clearTimeout(a.timer);
       activeAis.delete(k);
     };
-    if (!state.source) [...activeAis.keys()].forEach(clear);
-    else if (!state.session) {
+    if (!state.exact && !state.source) [...activeAis.keys()].forEach(clear);
+    else if (!state.exact && !state.session) {
       [...activeAis].filter(([, a]) => a.source === source).forEach(([k]) => clear(k));
     } else clear(key);
     renderFromActiveAis();
@@ -754,6 +758,7 @@ window.petAPI.onAiState((state) => {
     const alreadyPending = pendingConfirms.has(key);
     pendingConfirms.delete(key);
     pendingConfirms.set(key, {
+      source,
       text: prefix + (state.text || 'needs you to confirm'),
       link: state.link || '',
       linkText: state.linkText || ''
@@ -819,10 +824,12 @@ function showFocusPhones(show) {
 }
 
 window.petAPI.onFocus((f) => {
+  const recapText = f?.recap ? `focus recap: ${f.recap.tasks} done · ${formatDuration(f.recap.activeMs)} active · ${f.recap.pending} waiting` : '';
   cancelReaction();
   focusPhase = f && f.phase ? f.phase : null;
   lastInteraction = Date.now();
   if (confirmPending || activeAis.size) {
+    if (recapText) deferredNotice = recapText;
     pet.classList.toggle('focusing', focusPhase === 'work');
     showFocusPhones(focusPhase === 'work');
     if (focusPhase === 'work') startFocusNotes(); else stopFocusNotes();
@@ -846,12 +853,12 @@ window.petAPI.onFocus((f) => {
     showFocusPhones(false);
     pet.classList.remove('focusing');
     setMood('sleeping');
-    say(`break — back in ${f.minutes || 5}m 😴`, 4000);
+    say(recapText || `break — back in ${f.minutes || 5}m 😴`, recapText ? 8000 : 4000);
   } else {
     stopFocusNotes();
     showFocusPhones(false);
     pet.classList.remove('focusing');
-    say('focus done — nice work! 🎉', 3000);
+    say(recapText || 'focus done — nice work! 🎉', recapText ? 8000 : 3000);
     if (activeAis.size) renderFromActiveAis();
     else setMood('idle');
   }
@@ -1215,7 +1222,7 @@ window.addEventListener('mousemove', (e) => {
 function blink() {
   // A sleeping pet keeps its eyes shut — but the loop must still reschedule,
   // otherwise blinking stops for good the first time the pet nods off.
-  if (currentMood !== 'sleeping' && !reducedMotion.matches) {
+  if (currentMood !== 'sleeping' && !lowPower && !reducedMotion.matches) {
     pet.classList.add('blink');
     setTimeout(() => pet.classList.remove('blink'), 140);
   }
@@ -1308,7 +1315,7 @@ setInterval(() => {
     if (lastIdleAction !== 'yawn') performIdleAction('yawn', 3000);
     return;
   }
-  if (idleActionTimer || quiet || reducedMotion.matches) return;
+  if (idleActionTimer || quiet || lowPower || reducedMotion.matches) return;
 
   // ~1 in 4 chance of a little idle action each tick
   if (currentMood === 'idle' && Math.random() < 0.25) {
